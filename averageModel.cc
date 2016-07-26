@@ -166,13 +166,15 @@ int main(int argc, char** argv)
     
     if(i>1000000 && rangeTst) break;
 
-    x += offset;
 
     if("mirror" == distModel) {
         x=-x;
         angX=-angX;
         angXi=-angXi;
     }
+
+    x += offset;
+
     if("ideal23_bevel" == barModel || "ideal23_polish" == barModel ||
        "md6config3_23" == barModel || "md7config2_23" == barModel ||
        "md8config16_23" == barModel) {
