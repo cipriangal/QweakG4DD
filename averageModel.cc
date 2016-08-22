@@ -160,11 +160,12 @@ int main(int argc, char** argv)
     
     if(i>1000000 && rangeTst) break;
 
-    x += offset;
 
     float flip(1.);
     if(distModel == "mirror")
       flip=-1.;
+
+    x += offset;
 
     double lpe(-1),rpe(-1);
     if(!interpolator.getPEs(E,flip*x,flip*angX,lpe,rpe)) continue;
