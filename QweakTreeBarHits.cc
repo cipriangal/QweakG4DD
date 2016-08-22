@@ -17,11 +17,11 @@ float x,y,z,E;
 float angX,angY,angXi,angYi;
 float xi,yi,zi;
 float polT,polTi;
-double calcAsym;
+double asymPpM,asymPmM;
 std::vector<double> xI,yI,zI,aXi,aYi,polI;
 
 void findInt(std::vector<int> &inter,std::vector<int> &val, int trackID,int parent, int &hasPar, int &nInt);
-void processOne(TTree *QweakSimG4_Tree,TTree *tout);
+void processOne(TTree *QweakSimG4_Tree,TTree *tout, int &nrEvts);
 void readInitial(string fnm);
 
 
@@ -35,7 +35,7 @@ int main(int argc, char** argv){
   string files(argv[1]);
 
   TFile *fout=new TFile("o_hits.root","RECREATE");
-  TH1I *hEntries=new TH1I("hEntries","number of processed events",1,0,1);
+  TH1I *hEntries=new TH1I("hEntries","number of processed events",2,0,2);
   TTree *tout=new TTree("t","Stripped QweakSimG4 tree for hits");
   tout->Branch("evNr",&evNr,"evNr/I");
   tout->Branch("primary",&primary,"primary/I");
@@ -52,9 +52,11 @@ int main(int argc, char** argv){
   tout->Branch("angXi",&angXi,"angXi/F");
   tout->Branch("angYi",&angYi,"angYi/F");
   tout->Branch("polTi",&polTi,"polTi/F");
-  tout->Branch("calcAsym",&calcAsym,"calcAsym/D");
+  tout->Branch("asymPpM",&asymPpM,"asymPpM/D");
+  tout->Branch("asymPmM",&asymPmM,"asymPmM/D");
   
   int totEv=0;
+  int simEvts(0);
   if ( files.find(".root") < files.size() ){
     readInitial(files);
     TFile *fin=new TFile(files.c_str(),"READ");
@@ -71,7 +73,8 @@ int main(int argc, char** argv){
     totEv+=evts;
     cout<<" total nr ev: "<<evts<<" "<<totEv<<endl;
     
-    processOne(QweakSimG4_Tree,tout);
+    processOne(QweakSimG4_Tree,tout,simEvts);
+    simEvts=std::ceil(simEvts/1000.)*1000;
     
     cout<<"Done looping!"<<endl;
     fin->Close();
@@ -91,7 +94,8 @@ int main(int argc, char** argv){
       int evts=QweakSimG4_Tree->GetEntries();
       totEv+=evts;
       cout<<" total nr ev: "<<evts<<" "<<totEv<<endl;      
-      processOne(QweakSimG4_Tree,tout);      
+      processOne(QweakSimG4_Tree,tout,simEvts);      
+      simEvts=std::ceil(simEvts/1000.)*1000;
       fin->Close();
       delete fin;
     }
@@ -99,7 +103,10 @@ int main(int argc, char** argv){
   }
   
   cout<<"Processed "<<totEv<<" events"<<endl;
+  cout<<"\tfrom "<<simEvts<<" simulated events"<<endl;
+  
   hEntries->SetBinContent(1,totEv);
+  hEntries->SetBinContent(2,simEvts);
   fout->cd();
   hEntries->Write();
   tout->Write();
@@ -107,7 +114,7 @@ int main(int argc, char** argv){
   return 0;
 }
 
-void processOne(TTree *QweakSimG4_Tree, TTree *tout){
+void processOne(TTree *QweakSimG4_Tree, TTree *tout, int &nrEvts){
 
   std::vector<int> interaction;
   std::vector<int> trackID;
@@ -120,8 +127,9 @@ void processOne(TTree *QweakSimG4_Tree, TTree *tout){
     QweakSimG4_Tree->GetEntry(i);
     if(i%10000==1) cout<<"   at event: "<<i<<endl;
 
-    evNr=event->Primary.GetPrimaryEventNumber();
-    calcAsym = event->Primary.GetAsymPrim();
+    evNr = nrEvts + event->Primary.GetPrimaryEventNumber();
+    asymPpM = event->Primary.GetAsymDeno();
+    asymPmM = event->Primary.GetAsymNomi();
     
     xi=xI[i];
     yi=yI[i];
@@ -166,6 +174,7 @@ void processOne(TTree *QweakSimG4_Tree, TTree *tout){
       tout->Fill();
     }//nhit
   }//tree entries
+  nrEvts = evNr;
 }
 
 void readInitial(string fnm){

@@ -1,5 +1,5 @@
 # QweakG4DD
-Branch of the Qweak G4 simulation 
+Fork of the Qweak G4 simulation 
 
 To get repo:
 git clone git@github.com:cipriangal/QweakG4DD

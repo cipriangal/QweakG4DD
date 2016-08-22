@@ -3,43 +3,70 @@
 
 TH3D *hIn;
 
-void samplePrimaryDist(int seed, int nevents,int vPol){
+// which distribution to sample:
+//     1Yx from data
+//     20x from data
+//   x = oct number;
+//   Y either 0 or 1 for data refers to either the first or second tracking run (see readDist)
+int nDist=203;
+double getAngYa, getAngYb;
+int draw=0;
+
+void samplePrimaryDist(int nevents,int vPol, int chooseDist=0){
+
+  if(chooseDist!=0)
+    nDist=chooseDist;
+  
   if(gRandom) delete gRandom;
-  gRandom = new TRandom3(0);  
-  //gRandom = new TRandom3(seed);
-  //use for files with Hit_Map_Tracks ... DA tracking files
-  //hIn=new TH3D("hIn","input h",15,320,350,20,-100,100,14,0.34,0.48);
-  //use for MC files (JP)
-  hIn=new TH3D("hIn","input h",22,324,346,200,-100,100,14,0.34,0.48);
+  gRandom = new TRandom3(0);
+
+  if(nDist<200)
+    //use for files with Hit_Map_Tracks ... DA tracking files
+    hIn=new TH3D("hIn","input h",15,320,350,20,-100,100,14,0.34,0.48);
+  else    
+    //use this for MC files from qelog Det 117 (JP)
+    hIn=new TH3D("hIn","input h",24,323,347,200,-100,100,14,0.34,0.48);
+
   readDist();
-  //cout<<"You are offseting the distribution along the bar!"<<endl;
-  sampleDist(nevents,vPol);
-  //drawDist();
+
+  if(draw)
+    drawDist();
+  else
+    sampleDist(nevents,vPol);
 }
 
 void readDist(){
-  //ifstream fin("../macros/md_dist.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_13671_MD2_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_13671_MD6_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_13674_MD4_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_13674_MD8_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_13676_MD3_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_13676_MD7_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_13679_MD3_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_13679_MD7_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_13681_MD1_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_13681_MD5_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_15121_MD1_.txt");
-  //ifstream fin("../input/Hit_Map_Tracks_15121_MD5_.txt");
-  //ifstream fin("../input/MC_HitMap_Oct1.txt");//distribution at the face of the Pb
-  ifstream fin("../input/MC_HitMap_Oct3.txt");//distribution at the face of the Pb
+  int nOct=nDist%100 - 1;
+  int nData= ( (nDist-nDist%100)/10 ) %10;
+  string fnm;
+  int trackingRuns[8][2]={{15121,13681},{13671,0},{13679,13676},{13674,0},{13681,15121},{13671,0},{13676,13679},{13674,0}};
+
+  //for equation a*X+b =>JP det elog 117
+  double a[8]={1.37e-3, 1.37e-3, 1.37e-3, 1.37e-3, 1.38e-3, 1.37e-3, 1.37e-3, 1.37e-3};
+  double b[8]={-1.8e-4, -1.9e-4,  1.8e-4,  3.1e-4, -2.0e-5,  1.6e-4,  2.2e-4,  1.1e-4};
+  getAngYa=a[nOct];
+  getAngYb=b[nOct];
+  
+  if(nDist<200){
+    if(trackingRuns[nOct][nData]==0){
+      cout<<"Can't find tracking data run: "<<nOct<<" "<<nData<<" "<<endl;
+      gSystem->Exit(1);
+    }else
+      //these are at the MD => projection required
+      fnm=Form("../input/Hit_Map_Tracks_%d_MD%d_.txt",trackingRuns[nOct][nData],nOct+1);
+  }else
+    //these are the face of the Pb -- no projection needed
+    fnm=Form("../input/MC_HitMap_Oct%d.txt",nOct+1);
+
+  ifstream fin(fnm.c_str());
 
   double x,y,xs,val;
   while(fin>>x>>y>>xs>>val){
-    //cout<<x<<" "<<y<<" "<<xs<<" "<<val<<endl;
     if(val==0)continue;    
-    //hIn->SetBinContent(x+1,y+1,xs+1,val);//if using tracking data
-    hIn->SetBinContent(x,y,xs,val);//if using sim data
+    if(nDist<200)
+      hIn->SetBinContent(x+1,y+1,xs+1,val);//if using tracking data
+    else
+      hIn->SetBinContent(x,y,xs,val);//if using sim data
   }
 }
 
@@ -52,18 +79,20 @@ void sampleDist(int nevents,int vPol){
     double y(-1);//y position (along bar)  
     double z(-1);//x angle (across bar)    
     hIn->GetRandom3(x,y,z);
-    //y=y+0.5.;//FIXME 
 
     double pbZpos=571.9;//cm
     double deg=180./3.14159265359;
     double pbXang=getAngY(y);
     double pbYang=z;
     
-    //double pbXpos=getPbPos(y,pbXang);//this projects from the face of the quartz
-    double pbXpos=y;
-
-    //double pbYpos=getPbPos(x,pbYang);//this projects from the face of the quartz
-    double pbYpos=x;
+    double pbXpos,pbYpos;
+    if(nDist<200){
+      pbYpos=getPbPos(x,pbYang);//this projects from the face of the quartz
+      pbXpos=getPbPos(y,pbXang);//this projects from the face of the quartz
+    }else{
+      pbXpos=y;
+      pbYpos=x;
+    }
 
     if( (pow(sin(pbYang),2)+pow(sin(pbXang),2)) > 1 ) continue;
     if( pbYpos<326 || pbYpos>344 ) continue;
@@ -109,8 +138,10 @@ double getPbPos(double pos,double ang){
 }
 
 double getAngY(double posY){//[posY]=cm
-  //return (1.375e-3 * posY + 0.01); //from DA - data [rad]
-  //return (1.39e-3 * posY - 1.8e-4); //from JP - sim Oct1 [rad]
-  return (1.41e-3 * posY - 5.0e-5); //from JP - sim Oct3 [rad]
+
+  if(nDist<200)
+    return (1.375e-3 * posY + 0.01); //from DA - data [rad]
+  else
+    return getAngYa * posY - getAngYb;//from JP - det elog 117
 }
 

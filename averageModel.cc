@@ -5,31 +5,24 @@
 #include <math.h>
 #include <algorithm>
 
-#include "TH1D.h"
-#include "TH2D.h"
-#include "TH3D.h"
+#include "interpolatePEs.hh"
 #include "TFile.h"
 #include "TTree.h"
+#include "TH1D.h"
 
 using namespace std;
 
-const int dimension=5;//3 DoF + 2 PE values
-vector<double> scanPoints[dimension];
-int debugPrint=0;
-void readPEs(TString);
-void getCorners(int lowerIndex, int upperIndex, int depth, std::vector<double> point,
-		std::vector<double> points[dimension]);
-void getPEs(std::vector<double> in[dimension], std::vector<double> pt,
-	    double &outL, double &outR);
 void printInfo(TH1D *hl,TH1D *hr);
 
-const int nModels = 6;
+const int nModels = 8;
 //0=                                     
 //1= cnst*sgn(angX) for abs(angX)=[20,40]
 //2= cnst*angX                           
 //3= cnst*sgn(angX)*angX^2               
 //4= cnst*angX^3                         
-//5= microscopic model calculation
+//5= distribution weighted with P
+//6= distribution weighted with M
+//7= [5]/[6] microscopic distribution
 
 //model,R/L,Upper/Lower
 const int rangeTst=0;
@@ -39,6 +32,8 @@ double asymLimits[nModels][2][2]={
   {{-0.350,-0.100},{ 0.100, 0.350}},
   {{-0.350,-0.100},{ 0.100, 0.350}},
   {{-0.350,-0.100},{ 0.100, 0.350}},
+  {{-9.000, 9.000},{-9.000, 9.000}},
+  {{-9.000, 9.000},{-9.000, 9.000}},
   {{-9.000, 9.000},{-9.000, 9.000}}
 };
 
@@ -53,7 +48,7 @@ int main(int argc, char** argv)
     cout << " usage: build/avgModel [options]" << endl
          << " --rootfile <path to rootfile>" << endl
          << " --barmodel ideal0, ideal23, ideal23_polish, ideal23_bevel, "
-         << "md6config3_23, md7config2_23, md8config16_0 or md8config16_23"
+         << "md4config4_23, md6config3_23, md7config2_23, md8config16_0 or md8config16_23"
          << endl
          << " --distmodel mirror (omit for as is)" << endl;
     return 1;
@@ -67,29 +62,24 @@ int main(int argc, char** argv)
   for(Int_t i = 1; i < argc; i++) {
     if(0 == strcmp("--barmodel", argv[i])) {
       barModel = argv[i+1];
-    }
-    if(0 == strcmp("--distmodel", argv[i])) {
+    }else if(0 == strcmp("--distmodel", argv[i])) {
       distModel = argv[i+1];
-    }
-    if(0 == strcmp("--rootfile", argv[i])) {
+    }else if(0 == strcmp("--rootfile", argv[i])) {
       rootfile = argv[i+1];
-    }
-    if(0 == strcmp("--offset", argv[i])) {
+    }else if(0 == strcmp("--offset", argv[i])) {
       offset = atoi(argv[i+1]);
     }
   }
-
+  interpolatePEs interpolator(barModel.Data());
+  //interpolator.verbosity=1;
+  
   // Print out command line paramaters
   cout << "bar model:  " << barModel << endl
        << "distribution model:  " << distModel << endl
        << "using rootfile:  " << rootfile << endl
        << "using offset:  " << offset << endl;
 
-  readPEs(barModel);
-
-  string files(rootfile);
-
-  TFile *fin=TFile::Open(files.c_str(),"READ");
+  TFile *fin=TFile::Open(rootfile.Data(),"READ");
   TTree *t=(TTree*)fin->Get("t");
   int evNr;
   int primary;//0 secondary, 1 primary
@@ -97,7 +87,7 @@ int main(int argc, char** argv)
   float angX,angY;
   float angXi,angYi;
   float polT;
-  double calcAsym(0);
+  double asymPpM(0),asymPmM(0);
   t->SetBranchAddress("evNr",&evNr);
   t->SetBranchAddress("primary",&primary);
   t->SetBranchAddress("x",&x);
@@ -109,8 +99,10 @@ int main(int argc, char** argv)
   t->SetBranchAddress("angXi",&angXi);
   t->SetBranchAddress("angYi",&angYi);
   t->SetBranchAddress("polT",&polT);
-  if(t->GetListOfBranches()->FindObject("calcAsym"))
-    t->SetBranchAddress("calcAsym",&calcAsym);
+  if(t->GetListOfBranches()->FindObject("asymPpM")){
+    t->SetBranchAddress("asymPpM",&asymPpM);
+    t->SetBranchAddress("asymPmM",&asymPmM);
+  }
   
   TFile *fout=new TFile(Form("o_avgModel_%s_%s_offset_%d.root", barModel.Data(),
                              distModel.Data(),offset),"RECREATE");
@@ -149,11 +141,13 @@ int main(int argc, char** argv)
 
     if(float(i+1)/nev*100>currentStep){
       for(int imod=1;imod<nModels;imod++){
-	as[0][imod]->Fill( avgStepR[imod]/avgStepR[0]*1e6 );
-	as[1][imod]->Fill( avgStepL[imod]/avgStepL[0]*1e6 );
-	if(rangeTst){
-	  cout<<i<<" "<<imod<<" R "<<avgStepR[imod]<<" "<<avgStepR[0]<<" "<<avgStepR[imod]/avgStepR[0]*1e6<<endl;
-	  cout<<i<<" "<<imod<<" L "<<avgStepL[imod]<<" "<<avgStepL[0]<<" "<<avgStepL[imod]/avgStepL[0]*1e6<<endl;
+	if(avgStepR[0]>0 && avgStepL[0]>0){
+	  as[0][imod]->Fill( avgStepR[imod]/avgStepR[0]*1e6 );
+	  as[1][imod]->Fill( avgStepL[imod]/avgStepL[0]*1e6 );
+	  if(rangeTst){
+	    cout<<i<<" "<<imod<<" R "<<avgStepR[imod]<<" "<<avgStepR[0]<<" "<<avgStepR[imod]/avgStepR[0]*1e6<<endl;
+	    cout<<i<<" "<<imod<<" L "<<avgStepL[imod]<<" "<<avgStepL[0]<<" "<<avgStepL[imod]/avgStepL[0]*1e6<<endl;
+	  }
 	}
 	avgStepL[imod]=0;
 	avgStepR[imod]=0;
@@ -166,51 +160,29 @@ int main(int argc, char** argv)
     
     if(i>1000000 && rangeTst) break;
 
-
-    if("mirror" == distModel) {
-        x=-x;
-        angX=-angX;
-        angXi=-angXi;
-    }
-
     x += offset;
 
-    if("ideal23_bevel" == barModel || "ideal23_polish" == barModel ||
-       "md6config3_23" == barModel || "md7config2_23" == barModel ||
-       "md8config16_23" == barModel) {
-        if(abs(x)>100) continue;
-        if(abs(angX)>89) continue;
-    }
-    else {
-        if(abs(x)>90) continue;
-        if(abs(angX)>80) continue;
-    }
-    if(E<3) continue;
-    if(E>100) E=100;
-        
-    std::vector<double> pt(dimension-2,0);//correct point
-    std::vector<double> pts[dimension];
+    float flip(1.);
+    if(distModel == "mirror")
+      flip=-1.;
 
-    pt[0]=x;
-    pt[1]=E;
-    pt[2]=angX;
-    
     double lpe(-1),rpe(-1);
-    getCorners(0,scanPoints[0].size(),0,pt,pts);
-    getPEs(pts,pt,lpe,rpe);
+    if(!interpolator.getPEs(E,flip*x,flip*angX,lpe,rpe)) continue;
+    // cout<<" asdf L R "<<lpe<<" "<<rpe<<endl;
+    // std::cin.ignore();
+    
+    //nModels-1 because microscopic is special and done at the end
+    for(int imod=0;imod<nModels-1;imod++){
 
-    if(lpe<0 || rpe<0 ||
-       isnan(lpe) || isnan(rpe) ||
-       isinf(lpe) || isinf(rpe)){
-      cout<<"Problem with interpolator! "<<endl;
-      cout<<" "<<lpe<<" "<<rpe<<endl;
-      exit(1);
-    }
-
-    for(int imod=0;imod<nModels;imod++){
       double asym=model(angX-angXi,imod);
-      if(imod==5){
-	asym=calcAsym;
+      if(imod>4){
+	double P=(asymPpM+asymPmM)/2;
+	double M=(asymPpM-asymPmM)/2;
+	if(imod==5){
+	  asym=P;
+	}else if(imod==6)
+	  asym=M;
+
 	if(distModel == "mirror" ) asym=-asym;
       }
 
@@ -218,16 +190,34 @@ int main(int argc, char** argv)
       avgStepR[imod]+=asym*rpe;
       lAvgTotPE[imod]+=asym*lpe;
       rAvgTotPE[imod]+=asym*rpe;
-
+      
       hpe[0][imod]->Fill((1.+asym)*rpe);
       posPE[0][imod]->Fill(x,asym*rpe);
       angPE[0][imod]->Fill(angX-angXi,asym*rpe);
       hpe[1][imod]->Fill((1.+asym)*lpe);
       posPE[1][imod]->Fill(x,asym*lpe);
       angPE[1][imod]->Fill(angX-angXi,asym*lpe);
+      
     }        
   }
 
+  int posBin=posPE[0][7]->GetXaxis()->GetNbins();
+  int angBin=angPE[0][7]->GetXaxis()->GetNbins();
+  for(int j=0;j<2;j++){
+    for(int i=1;i<=posBin;i++){
+      double a=posPE[j][5]->GetBinContent(i);
+      double b=posPE[j][6]->GetBinContent(i);
+      if(a+b>0)
+	posPE[j][7]->SetBinContent(i, (a-b)/(a+b) );
+    }
+    for(int i=1;i<=angBin;i++){
+      double a=angPE[j][5]->GetBinContent(i);
+      double b=angPE[j][6]->GetBinContent(i);
+      if(a+b>0)
+	angPE[j][7]->SetBinContent(i, (a-b)/(a+b) );
+    }
+  }
+  
   cout<<endl<<"total PE average: A_L A_R DD A_ave A_ave/DD"<<endl;
   for(int imod=1;imod<nModels;imod++)
     cout<<imod<<"\t"<<lAvgTotPE[imod]/lAvgTotPE[0]<<"\t"<<rAvgTotPE[imod]/rAvgTotPE[0]
@@ -247,6 +237,10 @@ int main(int argc, char** argv)
   if("md8config16_0" == barModel) {
       tn1 = new TNamed("bar","md8config16");
       tn2 = new TNamed("angle","angle 0");
+  }                                         
+  if("md4config4_23" == barModel) {
+      tn1 = new TNamed("bar","md4config4");
+      tn2 = new TNamed("angle","angle 23");
   }                                         
   if("md6config3_23" == barModel) {
       tn1 = new TNamed("bar","md6config3");
@@ -338,214 +332,4 @@ void printInfo(TH1D *hl,TH1D *hr){
       <<al-ar<<"\t"<<sqrt(dar*dar+dal*dal)<<"\t"
       <<(al+ar)/2<<"\t"<<sqrt(dar*dar+dal*dal)/2<<"\t"
       <<((al+ar)/2)/(al-ar)*100<<endl;
-}
-
-void readPEs(TString barModel){
-  TString path;
-  if("ideal0" == barModel) {
-      cout << "Using input/idealBar_alongDir_acrossAng0_lightPara.txt" << endl;
-      path = "input/idealBar_alongDir_acrossAng0_lightPara.txt";
-  }
-  if("md8config16_0" == barModel) {
-      cout << "Using input/md8Config16_alongDir_acrossAng0_lightPara.txt" << endl;
-      path = "input/md8Config16_alongDir_acrossAng0_lightPara.txt";
-  }
-  if("ideal23" == barModel) {
-      cout << "Using input/idealBar_alongDir_acrossAng23_lightPara.txt" << endl;
-      path = "input/idealBar_alongDir_acrossAng23_lightPara.txt";
-  }
-  if("md8config16_23" == barModel) {
-      cout << "Using input/md8Config16_alongDir_acrossAng23_lightPara.txt" << endl;
-      path = "input/md8Config16_alongDir_acrossAng23_lightPara.txt";
-  }
-  if("md6config3_23" == barModel) {
-      cout << "Using input/md6Config3_alongDir_acrossAng23_lightPara.txt" << endl;
-      path = "input/md6Config3_alongDir_acrossAng23_lightPara.txt";
-  }
-  if("md7config2_23" == barModel) {
-      cout << "Using input/md7Config2_alongDir_acrossAng23_lightPara.txt" << endl;
-      path = "input/md7Config2_alongDir_acrossAng23_lightPara.txt";
-  }
-  if("ideal23_polish" == barModel) {
-      cout << "Using input/idealBar_alongDir_acrossAng23_Polish0977.txt" << endl;
-      path = "input/idealBar_alongDir_acrossAng23_Polish0977.txt";
-  }
-  if("ideal23_bevel" == barModel) {
-      cout << "input/idealBar_alongDir_acrossAng23_Bevel1mmRightBar05mmLeftBar.txt" << endl;
-      path = "input/idealBar_alongDir_acrossAng23_Bevel1mmRightBar05mmLeftBar.txt";
-  }
-  ifstream fin(path);
-  if(!fin.is_open()) {
-    cout<<" cannot read file for PE parametrization :macros/yl_md3_angle_scan.txt" <<endl;
-    exit(2);
-  }
-
-
-  double x1,x2,x3,x4,x5,x6,x7,x8,x9;  
-  string data;
-  getline(fin, data);
-
-  for(int i=0;i<dimension;i++)
-    scanPoints[i].clear();
-  
-  while(fin>>x1>>x2>>x3>>x4>>x5>>x6>>x7>>x8>>x9){
-    scanPoints[0].push_back(x1);//position
-    scanPoints[1].push_back(x2);//energy
-    scanPoints[2].push_back(x3);//angle
-    scanPoints[3].push_back(x6);//LPEs
-    scanPoints[4].push_back(x8);//RPEs
-    if(debugPrint)
-      cout<<x1<<" "<<x2<<" "<<x3<<" "<<x6<<" "<<x8<<endl;
-  }
-  
-  fin.close();
-}
-
-void getCorners(int lowerIndex, int upperIndex, int depth, std::vector<double> point,
-		std::vector<double> points[dimension]){
-
-  if(lowerIndex==-1 || upperIndex==-1 || lowerIndex>upperIndex){
-    cout<<"Problem with index: "<<lowerIndex<<" "<<upperIndex<<endl;
-    exit(1);
-  }
-  if(lowerIndex==upperIndex) return;
-  
-  int lI(-1),hI(-1);
-  double valSmaller(999),valLarger(999);
-  int nextDepth=depth+1;
-  
-  std::vector<double>::iterator begin=scanPoints[depth].begin();
-  std::vector<double>::iterator start=begin+lowerIndex;
-  std::vector<double>::iterator stop =begin+upperIndex;
-  
-  if(debugPrint)
-    cout<<endl<<__LINE__<<" "<<__PRETTY_FUNCTION__<<endl
-	<<"start upper : "<<point[depth]<<" "<<*start<<" "<<*(stop-1)<<" "
-	<<int(start-begin)<<" "<<int(stop-begin)<<endl;
-
-  if( point[depth]== *start)
-    lI=lowerIndex;
-  else if( point[depth] == *(stop-1) ){
-    lI = int( lower_bound(start,stop,point[depth]) - begin );
-  }else{    
-    valSmaller = *( lower_bound(start,stop,point[depth]) - 1 );
-    lI = int( lower_bound(start,stop,valSmaller) - begin );
-  }
-  
-  hI = int( upper_bound(start,stop,point[depth]) - begin );
-
-  if(debugPrint){
-    cout<<endl<<__LINE__<<" "<<__PRETTY_FUNCTION__<<endl<<depth<<" "<<lowerIndex<<" "<<upperIndex<<" "<<lI<<" "<<hI<<endl;
-    cout<<" "<<valSmaller<<"<"<<point[depth]<<"<"<<valLarger<<endl
-	<<" range: "<<scanPoints[depth][lI]<<" "<<scanPoints[depth][hI-1]<<endl
-	<<"  depth lI hI "<<depth<<" "<<lI<<" "<<hI<<endl;
-  }
-
-  if(depth==dimension-3){
-
-    for(int i=0;i<dimension;i++) {
-      points[i].push_back(scanPoints[i][lI]);
-      points[i].push_back(scanPoints[i][hI]);
-    }
-    
-    if(debugPrint){
-      cout<<endl<<__LINE__<<" "<<__PRETTY_FUNCTION__<<endl
-	  <<"End lower: "<<endl;
-      for(int i=0;i<dimension;i++) cout<<scanPoints[i][lI]<<" ";
-      cout<<endl;
-      for(int i=0;i<dimension;i++) cout<<scanPoints[i][hI]<<" ";
-      cout<<endl<<endl;
-    }
-    return;
-  }else{
-    getCorners(lI,hI,nextDepth,point,points);
-  }
-
-  if( point[depth] == *(stop-1) ) return;
-
-  if(debugPrint)
-    cout<<endl<<__LINE__<<" "<<__PRETTY_FUNCTION__<<endl<<"start upper : "<<depth<<" "<<point[depth]<<" "<<*start<<" "<<*(stop-1)<<" "
-	<<int(start-begin)<<" "<<int(stop-begin)<<endl;
-  
-  lI = int( upper_bound(start,stop,point[depth]) - begin );
-  if( point[depth] == *(stop-1) )
-    hI = upperIndex;
-  else{
-    valLarger=*(lower_bound(start,stop,point[depth]));
-    hI = int( upper_bound(start,stop,valLarger) - begin );
-  }
-  if(debugPrint){
-    cout<<endl<<__LINE__<<" "<<__PRETTY_FUNCTION__<<endl
-	<<depth<<" "<<lowerIndex<<" "<<upperIndex<<" "<<lI<<" "<<hI<<endl;
-    cout<<" "<<valSmaller<<" "<<point[depth]<<" "<<valLarger<<" "
-	<<scanPoints[depth][lI]<<" "<<scanPoints[depth][hI-1]<<endl;
-  }
-  
-  if( point[depth]!= *start )
-    getCorners(lI,hI,nextDepth,point,points);
-}
-
-void getPEs(std::vector<double> in[dimension], std::vector<double> pt,
-	    double &outL, double &outR){
-
-  std::vector<double> dm[dimension];
-
-  if(debugPrint){
-    cout<<endl<<__LINE__<<" "<<__PRETTY_FUNCTION__<<endl
-	<<"start "<<in[0].size()<<endl;
-    for(unsigned long i=0;i<in[0].size();i++){
-      for(int j=0;j<dimension;j++)
-	cout<<in[j][i]<<" ";
-      cout<<endl;
-    }
-  }
-  
-  if(in[0].size()==1){
-    outL=in[dimension-2].front();
-    outR=in[dimension-1].front();
-    return;
-  }
-
-  int depth(-1);
-  for(int j=0;j<dimension-2;j++)
-    if(in[j][0]!=in[j][1])
-      depth=j;
-  
-  for(int i=0;i<dimension;i++){
-    dm[i].resize(in[i].size());
-    for(unsigned long j=0;j<in[i].size();j++)
-      dm[i][j]=in[i][j];
-  }
-
-  for(int i=0;i<dimension;i++)
-    in[i].resize(dm[i].size()/2);
-
-  for(unsigned long i=0;i<dm[0].size();i+=2){
-
-    double l1=dm[dimension-2][i];
-    double r1=dm[dimension-1][i];
-    double l2=dm[dimension-2][i+1];
-    double r2=dm[dimension-1][i+1];
-    double fl=l1+(l2-l1)*(pt[depth]-dm[depth][i])/(dm[depth][i+1]-dm[depth][i]);
-    double fr=r1+(r2-r1)*(pt[depth]-dm[depth][i])/(dm[depth][i+1]-dm[depth][i]);
-      
-    for(int j=0;j<dimension-2;j++)
-      if(j!=depth)
-	in[j][i/2]=dm[j][i];
-      else
-	in[j][i/2]=pt[depth];
-    in[dimension-2][i/2]=fl;
-    in[dimension-1][i/2]=fr;      
-  }
-
-  if(debugPrint){
-    cout<<endl<<__LINE__<<" "<<__PRETTY_FUNCTION__<<endl
-	<<depth<<endl;
-    for(unsigned long i=0;i<in[0].size();i++){
-      for(int j=0;j<dimension;j++)
-	cout<<in[j][i]<<" ";
-      cout<<endl;
-    }
-  }
-  getPEs(in,pt,outL,outR);
 }

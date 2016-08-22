@@ -637,9 +637,9 @@ QweakSimWentzelVIModel::SampleScattering(const G4ThreeVector& oldDirection,
       //     << prob[i] << G4endl;
       temp = wokvi->SampleSingleScattering(cosThetaMin, cosTetM, prob[i]);
 
-      //FIXME
       cost=cos(temp.getTheta());
       sint = sqrt((1.0 - cost)*(1.0 + cost));
+      //FIXME
       phi=temp.getPhi();
       if(ePolarized){
 
@@ -649,13 +649,7 @@ QweakSimWentzelVIModel::SampleScattering(const G4ThreeVector& oldDirection,
 	  G4cout<<"\tpolarization.R\ttransPol: "<<polarization.getR()<<"\t"<<transPol<<G4endl;
 	}
 	G4double _amplitude = AnalyzingPower(eEnergy, cost) * transPol;
-
-	G4double vx1 = sint*cos(phi);
-	G4double vy1 = sint*sin(phi);
-	temp.set(vx1,vy1,cost);
-	G4ThreeVector tnewDirection(vx1,vy1,cost);
-	tnewDirection.rotateUz(oldDirection);
-	G4double phiPol = tnewDirection.getPhi() + polarization.getPhi();
+	G4double phiPol = phi - polarization.getPhi();
 
 	if(modifyTrajectory){
 	  G4double _prob=G4UniformRand();
@@ -664,12 +658,6 @@ QweakSimWentzelVIModel::SampleScattering(const G4ThreeVector& oldDirection,
 	  }		
 	  if(phi<0) phi+=twopi;
 	  else if(phi>twopi) phi=fmod(phi,twopi);
-	}
-
-	if(debugPrint){
-	  G4cout<<__PRETTY_FUNCTION__<<G4endl;
-	  G4cout<<"\tpol.phi\tphi\told.phi\tphiPol : "<<G4endl<<"\t"
-		<<polarization.getPhi()<<"\t"<<phi<<"\t"<<oldDirection.getPhi()<<"\t"<<phiPol<<G4endl;
 	}
 	
 	G4double pp=1.+_amplitude*sin(phiPol);
@@ -736,13 +724,7 @@ QweakSimWentzelVIModel::SampleScattering(const G4ThreeVector& oldDirection,
 	  G4cout<<"\tpolarization.R\ttransPol: "<<polarization.getR()<<"\t"<<transPol<<G4endl;
 	}
 	G4double _amplitude = AnalyzingPower(eEnergy, cost) * transPol;
-	
-	G4double vx1 = sint*cos(phi);
-	G4double vy1 = sint*sin(phi);
-	temp.set(vx1,vy1,cost);
-	G4ThreeVector tnewDirection(vx1,vy1,cost);
-	tnewDirection.rotateUz(oldDirection);
-	G4double phiPol = tnewDirection.getPhi() + polarization.getPhi();
+	G4double phiPol = phi - polarization.getPhi();
 
 	if(modifyTrajectory){
 	  G4double _prob=G4UniformRand();
@@ -752,12 +734,6 @@ QweakSimWentzelVIModel::SampleScattering(const G4ThreeVector& oldDirection,
 	  phi+= polarization.getPhi() - oldDirection.getPhi();
 	  if(phi<0) phi+=twopi;
 	  else if(phi>twopi) phi=fmod(phi,twopi);
-	}
-
-	if(debugPrint){
-	  G4cout<<__PRETTY_FUNCTION__<<G4endl;
-	  G4cout<<"\tpol.phi\tphi\told.phi\tphiPol : "<<G4endl<<"\t"
-		<<polarization.getPhi()<<"\t"<<phi<<"\t"<<oldDirection.getPhi()<<"\t"<<phiPol<<G4endl;
 	}
 	
 	G4double pp=1.+_amplitude*sin(phiPol);

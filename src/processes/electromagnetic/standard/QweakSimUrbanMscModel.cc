@@ -963,12 +963,7 @@ QweakSimUrbanMscModel::SampleScattering(const G4ThreeVector& oldDirection,
       G4cout<<"\tpolarization.R\ttransPol: "<<polarization.getR()<<"\t"<<transPol<<G4endl;
     }
     G4double _amplitude = AnalyzingPower(eEnergy, cth) * transPol;
-
-    G4double tdirx = sth*cos(phi);
-    G4double tdiry = sth*sin(phi);    
-    G4ThreeVector tnewDirection(tdirx,tdiry,cth);
-    tnewDirection.rotateUz(oldDirection);
-    G4double phiPol = tnewDirection.getPhi() + polarization.getPhi();    
+    G4double phiPol = phi - polarization.getPhi();    
     
     if(modifyTrajectory){
       G4double _prob=rndmEngineMod->flat();
@@ -977,14 +972,6 @@ QweakSimUrbanMscModel::SampleScattering(const G4ThreeVector& oldDirection,
       }
       if(phi<0) phi+=twopi;
       else if(phi>twopi) phi=fmod(phi,twopi);
-    }
-
-    if(debugPrint){
-      G4cout<<__PRETTY_FUNCTION__<<G4endl;
-      G4cout<<" aft rot:\tpol.phi\tphi\told.phi\tnew.phi\tphiPol\tsin(phiPol)\tnew.theta : "<<G4endl
-	    <<"\t"<<polarization.getPhi()<<"\t"<<phi<<"\t"<<oldDirection.getPhi()<<"\t"
-	    <<tnewDirection.getPhi()<<"\t"<<phiPol<<"\t"<<sin(phiPol)<<"\t"
-	    <<tnewDirection.getTheta()<<"\t"<<G4endl;
     }
 
     G4double pp=1.+_amplitude*sin(phiPol);

@@ -5,388 +5,161 @@
 #include <math.h>
 #include <algorithm>
 
-#include "QweakSimUserMainEvent.hh"
-#include "QweakSimSystemOfUnits.hh"
-#include "TH3D.h"
+#include "interpolatePEs.hh"
 #include "TFile.h"
 #include "TTree.h"
-#include "TGraphErrors.h"
-#include "TGraph.h"
 #include "TH1D.h"
 
 using namespace std;
 
-const int dimension=5;//3 DoF + 2 PE values
-vector<double> scanPoints[dimension];
-const int debugPrint=0;
-TGraph *peL,*peR,*aeL,*aeR,*npL,*npR;
-int nGraph(0);
-
-void readPEs();
-void getCorners(int lowerIndex, int upperIndex, int depth, std::vector<double> point,
-		std::vector<double> points[dimension]);
-void getPEs(std::vector<double> in[dimension], std::vector<double> pt,
-	    double &outL, double &outR);
-void findInt(std::vector<int> &inter,std::vector<int> &val, int trackID,int parent, int &hasPar, int &nInt);
-void processOneFile(string fname);
-
 int main(int argc, char** argv){
 
-  if( argc !=2 ) {
-    cout<<" usage:  "<<endl;
-    cout<<"     a) build/QweakAnaPEs [path to root file with distributions from QweakSimG4 trees]"<<endl;
-    cout<<"     b) build/QweakAnaPEs [path to list of files with distributions from QweakSimG4 trees]"<<endl;
+  if( argc == 1 || (0 == strcmp("--help", argv[1]))) {
+    cout << " usage: build/anaPEs [options]" << endl
+         << " --rootfile <path to rootfile>" << endl
+         << " --barmodel ideal0, ideal23, ideal23_polish, ideal23_bevel, "
+         << "md6config3_23, md7config2_23, md8config16_0 or md8config16_23"
+         << endl
+         << " --distmodel mirror (omit for as is)" << endl;
     return 1;
   }
-
-  readPEs();  
-  TFile *fout=new TFile("o_anaPE.root","RECREATE");
-  peL=new TGraph();
-  peR=new TGraph();
-  npL=new TGraph();
-  npR=new TGraph();
-  aeL=new TGraph();
-  aeR=new TGraph();
-
-  string file(argv[1]);
-  if ( file.find(".root") < file.size() ){
-    processOneFile(file);
-  }else{
-
-    ifstream ifile(file.c_str());
-    string data;
-    while(ifile>>data){
-      cout<<data<<endl;
-      processOneFile(data);
+  
+  // Read in command line paramaters
+  string barModel = "md8config16_23";
+  string distModel = "asIs";
+  string rootfile = "";
+  int offset = 0;
+  for(Int_t i = 1; i < argc; i++) {
+    if(0 == strcmp("--barmodel", argv[i])) {
+      barModel = argv[i+1];
+    }else if(0 == strcmp("--distmodel", argv[i])) {
+      distModel = argv[i+1];
+    }else if(0 == strcmp("--rootfile", argv[i])) {
+      rootfile = argv[i+1];
+    }else if(0 == strcmp("--offset", argv[i])) {
+      offset = atoi(argv[i+1]);
     }
-    ifile.close();
   }
+  interpolatePEs interpolator(barModel);
+
+  TFile *fin=TFile::Open(rootfile.c_str(),"READ");
+  TTree *t=(TTree*)fin->Get("t");
+  int evNr;
+  int primary;//0 secondary, 1 primary
+  float x,y,z,E,angX,angY,angXi,angYi,polT;
+  double asymPpM(0),asymPmM(0);
+  t->SetBranchAddress("evNr",&evNr);
+  t->SetBranchAddress("primary",&primary);
+  t->SetBranchAddress("x",&x);
+  t->SetBranchAddress("y",&y);
+  t->SetBranchAddress("z",&z);
+  t->SetBranchAddress("E",&E);
+  t->SetBranchAddress("angX",&angX);
+  t->SetBranchAddress("angY",&angY);
+  t->SetBranchAddress("angXi",&angXi);
+  t->SetBranchAddress("angYi",&angYi);
+  t->SetBranchAddress("polT",&polT);
+  if(t->GetListOfBranches()->FindObject("asymPpM")){
+    t->SetBranchAddress("asymPpM",&asymPpM);
+    t->SetBranchAddress("asymPmM",&asymPmM);
+  }
+
+  TFile *fout=new TFile(Form("o_anaPE_%s_%s.root",barModel.c_str(),distModel.c_str()),"RECREATE");
+  string lr[2]={"R","L"};
+  string species[3]={"N","P","A"};
+
+  TH1D *hTotPE=new TH1D("hTotPE","",4,0,4);
+  hTotPE->GetXaxis()->SetBinLabel(1,"N left  Total number of PEs");
+  hTotPE->GetXaxis()->SetBinLabel(2,"N right Total number of PEs");
+  hTotPE->GetXaxis()->SetBinLabel(3,"P left  Total number of PEs");
+  hTotPE->GetXaxis()->SetBinLabel(4,"P right Total number of PEs");
+  //[L/R][Primary/NonPrimary/All]
+  TH1D *hpe[2][3],*posPE[2][3],*angPE[2][3],*hpeAvg[2][3];
+  for(int i=0;i<2;i++)
+    for(int j=0;j<3;j++){
+      hpe[i][j]=new TH1D(Form("hpe_%s_%s",lr[i].c_str(),species[j].c_str()),
+			 Form("%s %s;number of PEs",lr[i].c_str(),species[j].c_str()),
+			 300,0,300);
+
+      hpeAvg[i][j]=new TH1D(Form("hpeAvg_%s_%s",lr[i].c_str(),species[j].c_str()),
+			    Form("1k ev Avg %s %s;number of PEs",lr[i].c_str(),species[j].c_str()),
+			    600,0,20);
+
+      posPE[i][j]=new TH1D(Form("posPE_%s_%s",lr[i].c_str(),species[j].c_str()),
+			   Form("%s %s;position along bar[cm]",lr[i].c_str(),species[j].c_str()),
+			   400,-100,100);
+      
+      angPE[i][j]=new TH1D(Form("angPE_%s_%s",lr[i].c_str(),species[j].c_str()),
+			   Form("%s %s;angle in shower [deg]",lr[i].c_str(),species[j].c_str()),
+			   400,-100,100);      
+    }
+
+  double TotPE[2][2]={{0,0},{0,0}};
+  double AvgPE[2][2]={{0,0},{0,0}};
+
+  int prevEvNr(0),currEvNr(0),realEvNr(0),nrFiles(0),recordNr(1000);
+  int nev=t->GetEntries();
+  for(int i=0;i<nev;i++){
+    t->GetEntry(i);
+    if( i % 1000000 == 1)
+      cout<<" at event: "<<i<<" "<<float(i+1)/nev*100<<"%"<<endl;
+
+    //if( i>5000000) break;
+    
+    if( i>0 )
+      prevEvNr=currEvNr;
+    currEvNr=evNr;
+    if( evNr<prevEvNr )
+      nrFiles++;
+    realEvNr=evNr+100000*nrFiles;
+
+    if(realEvNr>recordNr){
+      recordNr+=1000;
+      for(int j=0;j<2;j++)
+	for(int k=0;k<2;k++){
+	  hpeAvg[k][j]->Fill(AvgPE[j][k]/1000.);
+	  AvgPE[j][k]=0;
+	}
+    }
+    
+    float flip(1.);
+    if(distModel == "mirror")
+      flip=-1.;
+
+    double pes[2];
+    if(!interpolator.getPEs(E,flip*x,flip*angX,pes[0],pes[1])) continue;
+
+    for(int j=0;j<2;j++){
+      TotPE[primary][j]+=pes[j];
+      AvgPE[primary][j]+=pes[j];
+      
+      hpe[j][primary]->Fill(pes[j]);
+      posPE[j][primary]->Fill(x,pes[j]);
+      angPE[j][primary]->Fill(angX-angXi,pes[j]);
+
+      hpe[j][2]->Fill(pes[j]);
+      posPE[j][2]->Fill(x,pes[j]);
+      angPE[j][2]->Fill(angX-angXi,pes[j]);
+    }
+    
+    
+  }
+
+  for(int j=0;j<2;j++)
+    for(int k=0;k<2;k++){
+      hTotPE->SetBinContent(j*2+k+1,TotPE[j][k]);
+    }
 
   fout->cd();
-  peL->SetMarkerStyle(20);
-  peR->SetMarkerStyle(20);
-  aeL->SetMarkerStyle(20);
-  aeR->SetMarkerStyle(20);
-  npL->SetMarkerStyle(20);
-  npR->SetMarkerStyle(20);
-  peL->SetName("lpe");
-  peR->SetName("rpe");
-  aeL->SetName("lae");
-  aeR->SetName("rae");
-  npL->SetName("lnp");
-  npR->SetName("rnp");
-  peL->Write();
-  peR->Write();
-  aeL->Write();
-  aeR->Write();
-  npL->Write();
-  npR->Write();
+  hTotPE->Write();
+  for(int i=0;i<2;i++)
+    for(int j=0;j<3;j++){
+      hpe[i][j]->Write();
+      hpeAvg[i][j]->Write();
+      posPE[i][j]->Write();
+      angPE[i][j]->Write();
+    }
+  
   fout->Close();
 
-}
-
-void processOneFile(string fname){
-
-  TFile *fin=new TFile(fname.c_str(),"READ");
-  if(!fin->IsOpen()) {
-    cout<<endl<<endl<<"Skipping file :"<<fname<<endl<<endl;
-    delete fin;
-    return;
-  }else if(!fin->GetListOfKeys()->Contains("QweakSimG4_Tree")){
-    cout<<endl<<endl<<"Skipping file tree :"<<fname<<endl<<endl;
-    delete fin;
-    return;
-  }
-
-  TTree *QweakSimG4_Tree=(TTree*)fin->Get("QweakSimG4_Tree");
-  cout<<"   evts: "<<QweakSimG4_Tree->GetEntries()<<endl;
-
-  std::vector<int> interaction;
-  std::vector<int> trackID;
-
-  //set addresses of leafs
-  QweakSimUserMainEvent* event = 0;
-  QweakSimG4_Tree->SetBranchAddress("QweakSimUserMainEvent",&event);    
-
-  for (int i = 0; i < QweakSimG4_Tree->GetEntries(); i++) {
-    QweakSimG4_Tree->GetEntry(i);
-
-    double lprimaryPE=0.;
-    double rprimaryPE=0.;
-    double lnonPrimPE=0.;
-    double rnonPrimPE=0.;
-
-    interaction.clear();
-    trackID.clear();
-    
-    for (int hit = 0; hit < event->Cerenkov.Detector.GetDetectorNbOfHits(); hit++) {	
-      if(event->Cerenkov.Detector.GetDetectorID()[hit]!=3) continue;
-      int pTypeHit=event->Cerenkov.Detector.GetParticleType()[hit];
-      if(abs(pTypeHit)!=11) continue;
-      double E=event->Cerenkov.Detector.GetTotalEnergy()[hit];
-      
-      int parentID=event->Cerenkov.Detector.GetParentID()[hit];
-      int tID     =event->Cerenkov.Detector.GetParticleID()[hit];
-      
-      int hasParent(-1),nInt(-1);
-      findInt(interaction,trackID,tID,parentID,hasParent,nInt);
-      if(nInt!=1 || hasParent==1) continue;
-      
-      std::vector<double> pt1(dimension-2,0);//correct point
-      pt1[0]=event->Cerenkov.Detector.GetDetectorGlobalPositionX()[hit];
-      if(fabs(pt1[0])>90) continue;
-      
-      double Gphi   = event->Cerenkov.Detector.GetGlobalPhiAngle()[hit];
-      double Gtheta = event->Cerenkov.Detector.GetGlobalThetaAngle()[hit];	
-      double _Gtheta=Gtheta/180.*pi;
-      double _Gphi=(Gphi+90)/180.*pi; //+90 to account for the offset in the output
-      pt1[2] = atan2(sin(_Gtheta)*cos(_Gphi),cos(_Gtheta)) * 180.0 / pi;      
-      if(fabs(pt1[2])>80) continue;
-      
-      pt1[1] = ( E>100 ) ? 100 : E;
-      if (pt1[1]<3) continue;
-      
-      //calculate PEs
-      std::vector<double> pt2(dimension-2,0);//mirror point
-      std::vector<double> pts1[dimension];
-      std::vector<double> pts2[dimension];
-      pt2[0]=-pt1[0];
-      pt2[2]=-pt1[2];
-      pt2[1]=pt1[1];
-
-      double rpe(-1),lpe(-1);
-      double rp1(-1),rp2(-1);
-      double lp1(-1),lp2(-1);
-      getCorners(0,scanPoints[0].size(),0,pt1,pts1);
-      getPEs(pts1,pt1,lp1,rp1);
-
-      getCorners(0,scanPoints[0].size(),0,pt2,pts2);
-      getPEs(pts2,pt2,lp2,rp2);
-
-      if(lp1!=-1 && rp1!=-1 && lp2!=-1 && rp2!=-1){
-	lpe=(lp1+rp2)/2;
-	rpe=(rp1+lp2)/2;	    
-	//cout<<lp1<<" "<<rp1<<" "<<lp2<<" "<<rp2<<" "<<lpe<<" "<<rpe<<endl;
-      }else{
-	cout<<"Problem with interpolator!"<<lpe<<" "<<rpe<<" "<<pt1[0]<<" "<<pt1[1]<<" "<<pt1[2]<<endl;
-	exit(1);
-      }
-
-      
-      if(tID==1 && parentID==0){ //primary		
-	//add to event PEs
-	lprimaryPE+=lpe;
-	rprimaryPE+=rpe;
-      }else{ //nonprimary
-	//add to event PEs
-	lnonPrimPE+=lpe;
-	rnonPrimPE+=rpe;
-      }      
-    }//nhit
-
-    peL->SetPoint(nGraph,nGraph,lprimaryPE);
-    peR->SetPoint(nGraph,nGraph,rprimaryPE);
-    npL->SetPoint(nGraph,nGraph,lnonPrimPE);
-    npR->SetPoint(nGraph,nGraph,rnonPrimPE);
-    aeL->SetPoint(nGraph,nGraph,lprimaryPE+lnonPrimPE);
-    aeR->SetPoint(nGraph,nGraph,rprimaryPE+rnonPrimPE);
-    nGraph++;
-  }//tree entries
-  fin->Close();
-  delete fin;
-}
-
-void readPEs(){
-  ifstream fin("input/idealBar_alongDir_acrossAng0_lightPara.txt");
-  //ifstream fin("input/md8Config16_alongDir_acrossAng0_lightPara.txt");
-  double x1,x2,x3,x4,x5,x6,x7,x8,x9;  
-  string data;
-  getline(fin,data);
-
-  for(int i=0;i<dimension;i++)
-    scanPoints[i].clear();
-  
-  while(fin>>x1>>x2>>x3>>x4>>x5>>x6>>x7>>x8>>x9){
-    scanPoints[0].push_back(x1);//position
-    scanPoints[1].push_back(x2);//energy
-    scanPoints[2].push_back(x3);//angle
-    scanPoints[3].push_back(x6);//LPEs
-    scanPoints[4].push_back(x8);//RPEs
-    if(debugPrint)
-      cout<<x1<<" "<<x2<<" "<<x3<<" "<<x6<<" "<<x8<<endl;
-  }
-  
-  fin.close();
-}
-
-void getCorners(int lowerIndex, int upperIndex, int depth, std::vector<double> point,
-		std::vector<double> points[dimension]){
-
-  if(lowerIndex==-1 || upperIndex==-1 || lowerIndex>upperIndex){
-    cout<<"Problem with index: "<<lowerIndex<<" "<<upperIndex<<endl;
-    exit(0);
-  }
-  if(lowerIndex==upperIndex) return;
-  
-  int lI(-1),hI(-1);
-  double valSmaller(999),valLarger(999);
-  int nextDepth=depth+1;
-  
-  std::vector<double>::iterator begin=scanPoints[depth].begin();
-  std::vector<double>::iterator start=begin+lowerIndex;
-  std::vector<double>::iterator stop =begin+upperIndex;
-
-  if(debugPrint)
-    cout<<"start upper : "<<point[depth]<<" "<<*start<<" "<<*(stop-1)<<" "
-	<<int(start-begin)<<" "<<int(stop-begin)<<endl;
-
-  if( point[depth]== *start)
-    lI=lowerIndex;
-  else if( point[depth] == *(stop-1) ){
-    lI = int( lower_bound(start,stop,point[depth]) - begin );
-  }else{    
-    valSmaller = *( lower_bound(start,stop,point[depth]) - 1 );
-    lI = int( lower_bound(start,stop,valSmaller) - begin );
-  }
-  
-  hI = int( upper_bound(start,stop,point[depth]) - begin );
-
-  if(debugPrint){
-    cout<<depth<<" "<<lowerIndex<<" "<<upperIndex<<" "<<lI<<" "<<hI<<endl;
-    cout<<" "<<valSmaller<<" "<<point[depth]<<" "<<valLarger<<" "
-	<<scanPoints[depth][lI]<<" "<<scanPoints[depth][hI-1]<<endl;
-  }
-
-  if(depth==dimension-3){
-
-    for(int i=0;i<dimension;i++) {
-      points[i].push_back(scanPoints[i][lI]);
-      points[i].push_back(scanPoints[i][hI]);
-    }
-    
-    if(debugPrint){
-      cout<<endl<<endl<<"End lower: "<<endl;
-      for(int i=0;i<dimension;i++) cout<<scanPoints[i][lI]<<" ";
-      cout<<endl;
-      for(int i=0;i<dimension;i++) cout<<scanPoints[i][hI]<<" ";
-      cout<<endl<<endl;
-    }
-    return;
-  }else{
-    getCorners(lI,hI,nextDepth,point,points);
-  }
-
-  if( point[depth] == *(stop-1) ) return;
-
-  if(debugPrint)
-    cout<<"start upper : "<<depth<<" "<<point[depth]<<" "<<*start<<" "<<*(stop-1)<<" "
-	<<int(start-begin)<<" "<<int(stop-begin)<<endl;
-  
-  lI = int( upper_bound(start,stop,point[depth]) - begin );
-  if( point[depth] == *(stop-1) )
-    hI = upperIndex;
-  else{
-    valLarger=*(lower_bound(start,stop,point[depth]));
-    hI = int( upper_bound(start,stop,valLarger) - begin );
-  }
-  if(debugPrint){
-    cout<<depth<<" "<<lowerIndex<<" "<<upperIndex<<" "<<lI<<" "<<hI<<endl;
-    cout<<" "<<valSmaller<<" "<<point[depth]<<" "<<valLarger<<" "
-	<<scanPoints[depth][lI]<<" "<<scanPoints[depth][hI-1]<<endl;
-  }
-  
-  if( point[depth]!= *start )
-    getCorners(lI,hI,nextDepth,point,points);
-}
-
-void getPEs(std::vector<double> in[dimension], std::vector<double> pt,
-	    double &outL, double &outR){
-
-  std::vector<double> dm[dimension];
-
-  if(debugPrint){
-    cout<<"start "<<in[0].size()<<endl;
-    for(unsigned long i=0;i<in[0].size();i++){
-      for(int j=0;j<dimension;j++)
-	cout<<in[j][i]<<" ";
-      cout<<endl;
-    }
-  }
-
-  
-  if(in[0].size()==1){
-    outL=in[dimension-2].front();
-    outR=in[dimension-1].front();
-    return;
-  }
-
-  int depth(-1);
-  for(int j=0;j<dimension-2;j++)
-    if(in[j][0]!=in[j][1])
-      depth=j;
-  
-  for(int i=0;i<dimension;i++){
-    dm[i].resize(in[i].size());
-    for(unsigned long j=0;j<in[i].size();j++)
-      dm[i][j]=in[i][j];
-  }
-
-  for(int i=0;i<dimension;i++)
-    in[i].resize(dm[i].size()/2);
-
-  for(unsigned long i=0;i<dm[0].size();i+=2){
-
-    double l1=dm[dimension-2][i];
-    double r1=dm[dimension-1][i];
-    double l2=dm[dimension-2][i+1];
-    double r2=dm[dimension-1][i+1];
-    double fl=l1+(l2-l1)*(pt[depth]-dm[depth][i])/(dm[depth][i+1]-dm[depth][i]);
-    double fr=r1+(r2-r1)*(pt[depth]-dm[depth][i])/(dm[depth][i+1]-dm[depth][i]);
-      
-    for(int j=0;j<dimension-2;j++)
-      if(j!=depth)
-	in[j][i/2]=dm[j][i];
-      else
-	in[j][i/2]=pt[depth];
-    in[dimension-2][i/2]=fl;
-    in[dimension-1][i/2]=fr;      
-  }
-
-  if(debugPrint){
-    cout<<endl<<depth<<endl;
-    for(unsigned long i=0;i<in[0].size();i++){
-      for(int j=0;j<dimension;j++)
-	cout<<in[j][i]<<" ";
-      cout<<endl;
-    }
-  }
-  getPEs(in,pt,outL,outR);
-}
-
-		    
-void findInt(std::vector<int> &inter,std::vector<int> &val, int trackID,int parent, int &hasPar, int &nInt){
-  int found=0;
-  nInt=-2;
-  int findParent=0;
-  for(unsigned int i=0;i<val.size();i++){
-    if(trackID==val[i]){
-      inter[i]++;
-      nInt=inter[i];
-      found++;
-    }
-    if(parent==val[i])
-      findParent++;
-  }
-  
-  if(findParent) hasPar=1;
-  else hasPar=0;
-  
-  if(!found){
-    val.push_back(trackID);
-    inter.push_back(1);
-    nInt=1;
-  }
-  if(found>1){
-    cout<<"multiple entries for track "<<trackID<<endl;
-  }
 }
