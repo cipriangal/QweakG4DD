@@ -331,6 +331,11 @@ std::vector<pmtdd_data*> avgValue(TString barModel, TString distModel, TString r
   string lr[2]={"R","L"};
   TH1D *hpe[2][nModels],*posPE[2][nModels],*angPE[2][nModels];
   TH1D *as[2][nModels];
+
+  // Histogram for electron population (x)
+  TH1D *x_pos = new TH1D("x_pos","electron population vs pos",200,-100,100);
+  t->Draw("x>>x_pos","primary == 1 && abs(angX) < 89 && abs(x) < 100 && E > 3","goff");
+
   
   for(int i=0;i<nModels;i++)
     for(int j=0;j<2;j++){
@@ -503,6 +508,7 @@ std::vector<pmtdd_data*> avgValue(TString barModel, TString distModel, TString r
 
   cout<<endl<<" average asymmetry histogram results: A_L dA_L A_R dA_R DD dDD A_bias dA_bia A_bias/DD*100"<<endl;
   vector< pmtdd_data* > pmtdd;
+  x_pos->Write();
   for(int j=0;j<nModels;j++){      
     for(int i=0;i<2;i++){
       hpe[i][j]->Write();
