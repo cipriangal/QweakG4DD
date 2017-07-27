@@ -520,8 +520,14 @@ void QweakSimUserInformation::ReadInitialPositionMomentum(){
   fNormMomentumY.clear();
   
   //int i=0;
-  
   std::ifstream fin("positionMomentum.in");
+  if(!fin){
+    G4cerr<<"In file: "<<__PRETTY_FUNCTION__<<" at line "<<__LINE__<<G4endl
+	  <<"\tcould not find file positionMomentum.in."<<G4endl
+	  <<"\tyou specified \"/PrimaryEvent/SetFixedPosMom false\" in your macro file."<<G4endl
+	  <<"\tQuitting!";
+    exit(1);
+  }
   G4double tmpx,tmpy,tmpz,tmpPx,tmpPy;
   while(fin>>tmpx>>tmpy>>tmpz>>tmpPx>>tmpPy){
     fPositionX.push_back(tmpx*cm);
