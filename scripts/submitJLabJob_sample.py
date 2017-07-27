@@ -1,4 +1,4 @@
-#!/apps/python/PRO/bin/python
+#!/usr/bin/python
 from subprocess import call
 import sys,os,time
 
@@ -13,32 +13,33 @@ def main():
     _beamE=1160#MeV
     _email="ciprian@jlab.org"
     _source="/lustre/expphy/work/hallc/qweak/ciprian/simCodeG410/QweakG4DD"
-    _directory="/lustre/expphy/volatile/hallc/qweak/ciprian/farmoutput/g41001p01/sample/Mtx5e1_modTrj_glPhi_stp002mm"
-    _tracking=0 #0=primary only | 1=prim + opt photon | 2=no optical ph and 10x faster than 3=full
-    _stpSize=0.02
-    _nEv=150000
-    _nrStop=10000
-    _nrStart=5000
+    _directory="/lustre/expphy/volatile/hallc/qweak/ciprian/farmoutput/g41001p01/sample/moustaches/withShower/md3"
+    _tracking=2 #0=primary only | 1=prim + opt photon | 2=no optical ph and 10x faster than 3=full
+    _stpSize=-0.02
+    _nEv=100000
+    _nrStop=100
+    _nrStart=0
     _pol="V"
-    modTrj=2 ## 0:standard G4 propagation(wght sims) 1:debug print == big NONO! 2: modifyTraj
+    modTrj=0 ## 0:standard G4 propagation(wght sims) 1:debug print == big NONO! 2: modifyTraj
     submit=0
     nDist=203
     sample=1
 
-    idRoot= _pol+'_sampled_%03dk'% (_nEv/1000) 
+    #idRoot= _pol+'_sampled_%03dk'% (_nEv/1000) 
+    idRoot= _pol+'_sampled'+str(nDist)+'_%03dk'% (_nEv/1000) 
     for nr in range(_nrStart,_nrStop): # repeat for nr jobs
-        _idN= idRoot+'_%04d'% (nr) 
+        _idN= idRoot+'_%05d'% (nr) 
         print _idN
         createMacFile(_directory,_idN,_xP,_yP,_zP,_Px,_Py,_tracking,_beamE,_nEv,nr,modTrj,sample,_pol,_stpSize)
         ##create input files
-        if sample==1:
-            if _pol=="V":
-                call("root -l -q -b ../rootScripts/samplePrimaryDist.C\\("+str(_nEv)+",1,"+str(nDist)+"\\)",shell=True)
-            else:
-                call("root -l -q -b ../rootScripts/samplePrimaryDist.C\\("+str(_nEv)+",-1,"+str(nDist)+"\\)",shell=True)
+        # if sample==1:
+        #     if _pol=="V":
+        #         call("root -l -q -b ../rootScripts/samplePrimaryDist.C\\("+str(_nEv)+",1,"+str(nDist)+"\\)",shell=True)
+        #     else:
+        #         call("root -l -q -b ../rootScripts/samplePrimaryDist.C\\("+str(_nEv)+",-1,"+str(nDist)+"\\)",shell=True)
 
-            call(["mv","positionMomentum.in",_directory+"/"+_idN+"/positionMomentum.in"])
-            call(["mv","polarization.in",_directory+"/"+_idN+"/polarization.in"])
+        #     call(["mv","positionMomentum.in",_directory+"/"+_idN+"/positionMomentum.in"])
+        #     call(["mv","polarization.in",_directory+"/"+_idN+"/polarization.in"])
 
         call(["cp",_source+"/build/QweakSimG4",_directory+"/"+_idN+"/QweakSimG4"])
         call(["cp",_source+"/myQweakCerenkovOnly.mac",_directory+"/"+_idN+"/myQweakCerenkovOnly.mac"])
@@ -100,7 +101,7 @@ def createXMLfile(source,writeDir,idRoot,nStart,nStop,email,sample):
 #    f.write("  <Track name=\"debug\"/>\n")
     f.write("  <Track name=\"simulation\"/>\n")
     f.write("  <Name name=\""+idRoot+"\"/>\n")
-    f.write("  <OS name=\"centos65\"/>\n")
+    f.write("  <OS name=\"centos7\"/>\n")
     f.write("  <Command><![CDATA[\n")
     f.write("QweakSimG4 myRun.mac\n")
     f.write("  ]]></Command>\n")
@@ -108,7 +109,7 @@ def createXMLfile(source,writeDir,idRoot,nStart,nStop,email,sample):
 
     for nr in range(nStart,nStop): # repeat for nr jobs
         f.write("  <Job>\n")
-        idName= writeDir+"/"+idRoot+'_%04d'%(nr)
+        idName= writeDir+"/"+idRoot+'_%05d'%(nr)
         f.write("    <Input src=\""+idName+"/QweakSimG4\" dest=\"QweakSimG4\"/>\n")
         f.write("    <Input src=\""+idName+"/myQweakCerenkovOnly.mac\" dest=\"myQweakCerenkovOnly.mac\"/>\n")
         f.write("    <Input src=\""+idName+"/myRun.mac\" dest=\"myRun.mac\"/>\n")
