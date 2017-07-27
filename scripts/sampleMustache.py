@@ -4,14 +4,14 @@ import sys,os,time
 
 def main():
     
-    directory="/lustre/expphy/volatile/hallc/qweak/ciprian/farmoutput/g41001p01/sample/Mtx5e1_modTrj_glPhi_2PbVol_stp002mm"
-    nEv=250000
-    nrStop=5000
-    nrStart=4084
+    directory="/lustre/expphy/volatile/hallc/qweak/ciprian/farmoutput/g41001p01/sample/moustaches/withShower/md3"
+    nEv=100000
+    nrStop=600
+    nrStart=0
     pol="V"
     nDist=203
 
-    idRoot = pol+'_sampled_%03dk'% (nEv/1000)
+    idRoot = pol+'_sampled'+str(nDist)+'_%03dk'% (nEv/1000)
 
     for nr in range(nrStart,nrStop): # repeat for nr jobs
         idN = idRoot+'_%05d'% (nr)
