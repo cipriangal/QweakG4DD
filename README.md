@@ -17,7 +17,7 @@ This package comes with 2 modified physics processes that will replace the stand
 
 Their purpose is to either modify the phi diretion (see https://github.com/cipriangal/QweakG4DD/blob/master/src/processes/electromagnetic/standard/QweakSimUrbanMscModel.cc#L975)  of particles to introduce a transverse asymmetry and calculate an asymmetry weight (https://github.com/cipriangal/QweakG4DD/blob/master/src/processes/electromagnetic/standard/QweakSimUrbanMscModel.cc#L988) and propogate it through to the output. 
 
-##Analysis chain:
+## Analysis chain:
 ### Pb propogation
 To run the simulation do:
   `build/QweakSimG4 macro/runPMTDD.mac`
@@ -41,15 +41,15 @@ It produces two output files: **QwSim_0.root**(main output) and **o_tuple.root**
 ### Tree strip
 To get the relevant hits at the face of quartz (and strip the rest of the information that is normally not needed for the rest of the analysis) one then uses https://github.com/cipriangal/QweakG4DD/blob/master/QweakTreeBarHits.cc as
 
-  `build/QweakTreeBarHits QwSim_0.root`
+  `build/QweakTreeBarHits QwSim_0.root <outputSuffix> [optional: 1 if you ran your simulation with a fixed position]`
 
 or
 
-  `build/QweakTreeBarHits file.list`
+  `build/QweakTreeBarHits file.list <outputSuffix> [optional: 1 if you ran your simulation with a fixed position]`
 
-where file.list contains a list of paths and output root files from multiple simulations (for example when running on a farm and you have X files with the same configuration -- see above for different flags).
+where file.list contains a list of paths and output root files from multiple simulations (for example when running on a farm and you have X files with the same configuration -- see above for different flags). The last argument needs to 1 if you ran your simulation from a fixed location on the bar (i.e. not sampled a moustache).
 
-This produces a **o_hits.root** file that contains:
+This produces a **o_hits_outputSuffix.root** file that contains:
   - position and energy information at the face of the quartz: "x,y,z,E" 
   - position information at the beginning sim at the face of the Pb: "xi,yi,zi" 
   - flag to denote primary electron: "primary"
@@ -67,6 +67,18 @@ Using the hit map from the previous step one can apply different optical models 
   `buils/anaPE --rootfile <path to o_hits.root file> --barmodel <name>`
   
 Note: This should be used for track modification simulations.
+
+The detailed output for o_anaPE\* files can be understood by looking through the QweakAnaPEs source code. In broad strokes:
+  - histograms with names *hpe_\** have the PE distribution for all the events
+  - histograms with names *hpeAvg_\** have the average PE distribution. This can give you the uncertainty on the mean
+  - histograms with names *posPE_\** have the total number of PEs for a particular position 
+  - histograms with names *angPE_\** have the total number of PEs for a particular angle (this is the deflection angle)
+  - histograms with names *phiPE_\** have the total number of PEs for a particular global phi angle
+  - histograms with names *\*AvgProc_\** have the number of PEs similar to the above but for a chunck of data (by default 5%)
+
+All of these histograms are for either the Left or Right tubes (bad nomenclature: for MD3 this is really beam Left or Right) and for Primaries (P), Non-primaries (N), All electrons (A).
+
+For example if we want to calculate the asymmetry as a function of position along the bar for the Left tube we take posPE_L_P from the o_anaPE_V.root (the output from the vertical polarization simulation) and the same histogram from the o_anaPE_mV.root (the output from the minus vertical polarization simulation). For each bin we can calculate an asymmetry as (V-mV)/(V+mV).
 
 **Weighted analysis**
 

@@ -1,10 +1,5 @@
 # modified copy of myRun.mac that uses the modifications made by Buddhini
 
-###Set maximum step size in Pb
-##### < 0 is the std stepSize in Geant4
-##### > 0 for a real max stepSize
-/Cerenkov/SetPbStepSize -0.02 mm
-
 # load/execute this macro:
 /control/execute myQweakCerenkovOnly.mac
 
@@ -18,13 +13,13 @@
 /PrimaryEvent/SetBeamPositionX 0.0 cm
 /PrimaryEvent/SetBeamPositionY 335.0 cm
 /PrimaryEvent/SetBeamPositionZ 571.9 cm
-#/PrimaryEvent/SetBeamDirectionX 60 deg
+/PrimaryEvent/SetBeamDirectionX 0 deg
 /PrimaryEvent/SetBeamDirectionY 23 deg
 
 #Should events be generated from the same position and with the same momentum?
 #true: take either default or values above
 #false: get value for each event from file
-/PrimaryEvent/SetFixedPosMom false
+/PrimaryEvent/SetFixedPosMom true
 
 #set particle polarization for primary generator (L, H, V, mL, mH, mV, 0, f)
 #if f then read the polarization values from a file
@@ -47,8 +42,12 @@
 #/TrackingAction/TrackingFlag 2
 #/TrackingAction/TrackingFlag 3
 
-
 /EventGen/SelectOctant 3
+
+###Set maximum step size in Pb
+##### < 0 is the std stepSize in Geant4
+##### > 0 for a real max stepSize
+/Cerenkov/SetPbStepSize -0.02 mm
 
 ## run this if you updated geometrical values 
 /HallC/GeometryUpdate
@@ -56,4 +55,4 @@
 #/run/verbose 2
 #/tracking/verbose 1
 /random/setSeeds 727593 4878445
-/run/beamOn 10000
+/run/beamOn 100

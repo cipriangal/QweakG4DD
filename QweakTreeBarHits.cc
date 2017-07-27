@@ -29,7 +29,7 @@ void readInitial(string fnm);
 
 int main(int argc, char** argv){
 
-  if( argc < 2 ) {
+  if( argc < 3 ) {
     cout<<" usage: build/QweakAna [path to infile with list of output QweakSimG4 trees] [suffix for outfile] [optional: 1 for fixed position]"<<endl;
     return 1;
   }

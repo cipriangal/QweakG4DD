@@ -1,14 +1,9 @@
-void drawLight(){
-  //TFile *fin=TFile::Open("o_avgModel_ideal23v2_asIs_offset_0.00_Nmodels_7.root","READ");
-  //TFile *fin=TFile::Open("o_avgModel_ideal23v2_mirror_offset_0.00_Nmodels_7.root","READ");
-  //TFile *fin=TFile::Open("o_avgModel_ideal23_asIs_offset_0.00_Nmodels_7_MD3mustache.root","READ");
-  TFile *fin=TFile::Open("o_avgModel_ideal23_mirror_offset_0.00_Nmodels_7_MD3mustache.root","READ");
+void drawLight(string fnm="../o_avgModel_ideal23v2_mirror_offset_0.00_Nmodels_7.root"){
+  TFile *fin=TFile::Open(fnm.c_str(),"READ");
+
   TH1D *hl=(TH1D*)fin->Get("peL_pos_0");
   TH1D *hr=(TH1D*)fin->Get("peR_pos_0");
-  TH1D *xvar=(TH1D*)fin->Get("x_pos");
-
-  TH1D *xpos=xvar;
-  //TH1D *xpos=mirror(xvar);
+  TH1D *xpos=(TH1D*)fin->Get("x_pos");
 
   gStyle->SetOptStat(1);
   hl->Divide(xpos);
@@ -22,7 +17,7 @@ void drawLight(){
   hl->SetTitle("Left: Red | Right: blue");
   hl->GetXaxis()->SetRangeUser(-100,100);
 
-  TCanvas *c1=new TCanvas("c1","c1");
+  TCanvas *c1=new TCanvas("c1",fnm.c_str());
   c1->Divide(3);
   c1->cd(1);
   hl->DrawCopy();
