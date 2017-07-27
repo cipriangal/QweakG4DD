@@ -5,7 +5,7 @@
 #include "G4ParticleDefinition.hh"
 
 #include "G4eMultipleScattering.hh"
-
+#include "G4Version.hh"
 #include "processes/electromagnetic/standard/QweakSimUrbanMscModel.hh"
 #include "processes/electromagnetic/standard/QweakSimWentzelVIModel.hh"
 
