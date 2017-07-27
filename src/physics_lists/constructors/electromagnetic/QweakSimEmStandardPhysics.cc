@@ -20,7 +20,7 @@ void QweakSimEmStandardPhysics::ConstructProcess()
   // high energy limit for e+- scattering models
   G4double highEnergyLimit = 100*MeV;
 
-#if G4VERSION_NUMBER > 1021
+#if G4VERSION_NUMBER > 1030
   auto aParticleIterator=GetParticleIterator();
 #endif
   // Add standard EM Processes
