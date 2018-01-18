@@ -561,7 +561,9 @@ std::vector<pmtdd_data*> avgValue(TString barModel, TString distModel, TString r
           x_pos->Fill(yt);
           x_ang->Fill(angYt);
         }
-
+	/*
+	  add method for UD vs LR FIXME
+	 */
         avgStepL[imod]+=asym*lpe;
         avgStepR[imod]+=asym*rpe;
         lAvgTotPE[imod]+=asym*lpe;
