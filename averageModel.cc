@@ -59,7 +59,7 @@ double model(float val,int type, float Eval);
 int scaleLight(0);
 double scalePEs(double, int, double, string);
 
-void radialPEs(double, double, double, &double, &double);
+void radialPEs(double, double, double, double&, double&);
 
 int symMust(0),symPEs(0);
 double asymPEs(0);
