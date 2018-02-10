@@ -9,7 +9,6 @@
 // ROOT headers
 #include <TSystem.h>
 #include <TROOT.h>
-#include <TString.h>
 
 // QweakSim headers
 #include "QweakSimRint.hh"

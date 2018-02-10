@@ -76,7 +76,7 @@ vector<double> gprXcent,gprX;
 void readGpr(string fnm);
 void readGpr(vector<string> fnm);
 
-std::vector<pmtdd_data*> avgValue(TString, TString, TString, float, Int_t, string);
+std::vector<pmtdd_data*> avgValue(string, string, string, float, Int_t, string);
 
 int main(int argc, char** argv)
 {
@@ -120,9 +120,9 @@ int main(int argc, char** argv)
   }
 
   // Read in command line paramaters
-  TString barModel = "md8config16_23";
-  TString distModel = "asIs";
-  TString rootfile = "";
+  string barModel = "md8config16_23";
+  string distModel = "asIs";
+  string rootfile = "";
   Bool_t scan = kFALSE;
   float offset = 0;
   Int_t peUncert(0);
@@ -201,7 +201,7 @@ int main(int argc, char** argv)
 
   if(scan) {
     // List of all hitmaps to scan
-    std::vector<TString> hitMaps =
+    std::vector<string> hitMaps =
       {"hitmap/o_hits_sampled_MCoct1fixed_38e6Hits.root",
        "hitmap/o_hits_sampled_MCoct2fixed_38e6Hits.root",
        "hitmap/o_hits_sampled_MCoct3fixed_38e6Hits.root",
@@ -265,13 +265,13 @@ int main(int argc, char** argv)
       pad1[i]->cd();
       text[i] = new TPaveText(.05,.1,.95,.8);
       if(i == 0) {
-        text[i]->AddText(Form("A_{bias}/DD for all 6 models, %s vs octant",barModel.Data()));
+        text[i]->AddText(Form("A_{bias}/DD for all 6 models, %s vs octant",barModel.c_str()));
       }
       else if(i == 1) {
-        text[i]->AddText(Form("DD for all 6 models, %s vs octant",barModel.Data()));
+        text[i]->AddText(Form("DD for all 6 models, %s vs octant",barModel.c_str()));
       }
       else if(i == 2) {
-        text[i]->AddText(Form("A_{bias} for all 6 models, %s vs octant",barModel.Data()));
+        text[i]->AddText(Form("A_{bias} for all 6 models, %s vs octant",barModel.c_str()));
       }
       text[i]->Draw();
       pad2[i]->cd();
@@ -356,8 +356,8 @@ int main(int argc, char** argv)
   return 0;
 }
 
-std::vector<pmtdd_data*> avgValue(TString barModel, TString distModel, TString rootfile, float offset, Int_t peUncert, string suffix) {
-  interpolatePEs interpolator(barModel.Data(),peUncert);
+std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string rootfile, float offset, Int_t peUncert, string suffix) {
+  interpolatePEs interpolator(barModel.c_str(),peUncert);
   //interpolator.verbosity=1;
 
   // Print out command line paramaters
@@ -370,7 +370,7 @@ std::vector<pmtdd_data*> avgValue(TString barModel, TString distModel, TString r
   else
     cout<< "central PE values"<<endl;
 
-  TFile *fin=TFile::Open(rootfile.Data(),"READ");
+  TFile *fin=TFile::Open(rootfile.c_str(),"READ");
   TTree *t=(TTree*)fin->Get("t");
   int evNr;
   int primary;//0 secondary, 1 primary
@@ -397,11 +397,11 @@ std::vector<pmtdd_data*> avgValue(TString barModel, TString distModel, TString r
 
   string outNm="";
   if(suffix=="")
-    outNm=Form("o_avgModel_%s_%s_offset_%4.2f_Nmodels_%d.root", barModel.Data(),
-               distModel.Data(),offset,nModelsEff);
+    outNm=Form("o_avgModel_%s_%s_offset_%4.2f_Nmodels_%d.root", barModel.c_str(),
+               distModel.c_str(),offset,nModelsEff);
   else
-    outNm=Form("o_avgModel_%s_%s_offset_%4.2f_Nmodels_%d_%s.root", barModel.Data(),
-               distModel.Data(),offset,nModelsEff,suffix.c_str());
+    outNm=Form("o_avgModel_%s_%s_offset_%4.2f_Nmodels_%d_%s.root", barModel.c_str(),
+               distModel.c_str(),offset,nModelsEff,suffix.c_str());
   TFile *fout=new TFile(outNm.c_str(),"RECREATE");
 
   string lr[2]={"R","L"};
@@ -533,8 +533,8 @@ std::vector<pmtdd_data*> avgValue(TString barModel, TString distModel, TString r
       }
 
       if(scaleLight==1){
-        lpe = scalePEs(lpe,0,yt+offset,barModel.Data());
-        rpe = scalePEs(rpe,1,yt+offset,barModel.Data());
+        lpe = scalePEs(lpe,0,yt+offset,barModel.c_str());
+        rpe = scalePEs(rpe,1,yt+offset,barModel.c_str());
       }
 
       if(imust==1) {
