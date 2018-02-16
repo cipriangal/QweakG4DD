@@ -3,7 +3,7 @@ from subprocess import call
 import sys,os,time
 
 def main():
-    
+
     #beamE=[5,10,30,50,100]
     beamEnergy=[10,50]
 
@@ -11,7 +11,7 @@ def main():
     xPos=[0,60]
 
     xAng=[-40,-20,-10,-5,0]
-    #xAng=[-80,-75,-70,-65,-60,-55,-50,-45,-40,-35,-30,-25,-20,-15,-10,-5,-1,0,1,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80] 
+    #xAng=[-80,-75,-70,-65,-60,-55,-50,-45,-40,-35,-30,-25,-20,-15,-10,-5,-1,0,1,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80]
 
     yPos=[326,332,335,338,344]
 
@@ -36,31 +36,31 @@ def main():
                     for yP in yPos:
                         for yA in yAng:
                             zP=575.0 #in front of MD no Pb (this should go to at most 88 deg until the end of the bar)
-                            idN= pol+'_%04d_%06.2f_%06.2f_%06.2f_%06.2f_%06.2f_%03d'% (beamE,xP,yP,zP,xA,yA,nr) 
+                            idN= pol+'_%04d_%06.2f_%06.2f_%06.2f_%06.2f_%06.2f_%03d'% (beamE,xP,yP,zP,xA,yA,nr)
                             createMacFile(directory,idN,xP,yP,zP,xA,yA,beamE,pol,nEv,nr)
                             createXMLfile(idN,directory,email,source)
                             call(["cp",source+"/build/QweakSimG4",directory+"/"+idN+"/QweakSimG4"])
                             call(["cp",source+"/build/QweakGetPEs",directory+"/"+idN+"/QweakGetPEs"])
                             call(["cp",source+"/myQweakCerenkovOnly.mac",directory+"/"+idN+"/myQweakCerenkovOnly.mac"])
                             #sys.exit()#for testing purposes
-                            
+
                             if submit==1:
                                 print "submitting X position", xP,"with angle",xA,"for the ",nr," time"," with E ",beamE
                                 call(["jsub","-xml",directory+"/"+idN+"/job.xml"])
                             else:
                                 print "do not submit ",submit
-                                
+
 
 def createMacFile(directory,idname,xPos,yPos,zPos,xAng,yAng,beamE,pol,nEv,nr):
     if not os.path.exists(directory+"/"+idname):
         os.makedirs(directory+"/"+idname)
-   
+
     f=open(directory+"/"+idname+"/myRun.mac",'w')
     f.write("/control/execute myQweakCerenkovOnly.mac\n")
     f.write("/PrimaryEvent/SetBeamPositionX "+str(xPos)+" cm\n")
     f.write("/PrimaryEvent/SetBeamPositionY "+str(yPos)+" cm\n")
     f.write("/PrimaryEvent/SetBeamPositionZ "+str(zPos)+" cm\n")
-    f.write("/PrimaryEvent/SetBeamDirectionX "+str(xAng)+" deg\n") 
+    f.write("/PrimaryEvent/SetBeamDirectionX "+str(xAng)+" deg\n")
     f.write("/PrimaryEvent/SetBeamDirectionY "+str(yAng)+" deg\n")
     f.write("/PrimaryEvent/SetFixedPosMom true\n")
     f.write("/PrimaryEvent/SetPolarization "+pol+"\n")
@@ -77,14 +77,14 @@ def createMacFile(directory,idname,xPos,yPos,zPos,xAng,yAng,beamE,pol,nEv,nr):
 def createXMLfile(idname,directory,email,source):
     if not os.path.exists(directory+"/"+idname+"/log"):
         os.makedirs(directory+"/"+idname+"/log")
-    
+
     f=open(directory+"/"+idname+"/job.xml","w")
     f.write("<Request>\n")
     f.write("  <Email email=\""+email+"\" request=\"false\" job=\"true\"/>\n")
     f.write("  <Project name=\"qweak\"/>\n")
     f.write("  <Track name=\"simulation\"/>\n")
     f.write("  <Name name=\""+idname+"\"/>\n")
-    f.write("  <OS name=\"centos65\"/>\n")
+    f.write("  <OS name=\"centos7\"/>\n")
     f.write("  <Command><![CDATA[\n")
     f.write("cd "+directory+"/"+idname+"\n")
     f.write("./QweakSimG4 myRun.mac\n")
@@ -100,7 +100,7 @@ def createXMLfile(idname,directory,email,source):
     f.close()
 
     return 0
-                    
+
 if __name__ == '__main__':
     main()
-                            
+
