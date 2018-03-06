@@ -1,6 +1,13 @@
 #include <iostream>
 #include <fstream>
 
+void readDist();
+void drawDist();
+void sampleDist(int nevents,int nSim,int vPol);
+void getPol(double pos,double &polX, double &polY);
+double getPbPos(double pos,double ang);
+double getAngY(double posY);
+
 TH3D *hIn;
 
 // which distribution to sample:
@@ -116,10 +123,10 @@ void drawDist(){
   TCanvas *c1=new TCanvas("c1","c1",1600,1400);
   c1->Divide(2);
   c1->cd(1);
-  TH2D *h1=hIn->Project3D("xy");
+  TH2D *h1=(TH2D*)hIn->Project3D("xy");
   h1->DrawCopy("colz");
   c1->cd(2);
-  TH1D *h2=hIn->Project3D("y");
+  TH1D *h2=(TH1D*)hIn->Project3D("y");
   h2->DrawCopy("colz");
   gPad->SetGridx(1);
   gPad->SetGridy(1);
