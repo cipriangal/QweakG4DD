@@ -8,11 +8,11 @@ project(QweakSimG4)
 SITE_NAME(mySite)
 if(${mySite} MATCHES "ifarm*")
    if(NOT DEFINED Geant4_DIR)
-	set(Geant4_DIR $ENV{G4INSTALL}/build)
+	set(Geant4_DIR $ENV{G4INSTALL}/bin)
    endif(NOT DEFINED Geant4_DIR)
    message( "On ifarm using geant4_dir: " ${Geant4_DIR})
    find_package(Geant4 REQUIRED COMPONENTS gdml qt ui_all vis_all)
-   execute_process(COMMAND ${Geant4_DIR}/geant4-config --version
+   execute_process(COMMAND geant4-config --version
                    OUTPUT_VARIABLE GEANT4_VERSION
                    OUTPUT_STRIP_TRAILING_WHITESPACE)
 else()
