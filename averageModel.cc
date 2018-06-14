@@ -6,6 +6,18 @@
 #include <algorithm>
 #include <ctime>
 
+// modifications by David Armstrong April-June 2018
+// - Changed histogramming of asymmetries (used for getting
+//   statistical error bars) to allow for cases where not every 
+//   event is used, i.e. when adding fiducial cuts. 
+// - Instead of filling histograms after certain fractions of total number of 
+//   events, fill histograms every "ientry" events (default =1000).
+// - Added diagnostics outputs to ffout.
+// - Added a number of additional histograms and scatterplots.
+// - Added option to calculate analyzing power based on deltaTheta_x rather than deltaTheta_y,
+//   i.e. case of spin direction along the bar (i.e. MD3 in case of initially horizontal spin): use "--transverse"
+// - Added option for using a fiducial cut on arrive location at quartz in the acros-the-bar direction: use '--fiducial ..."
+
 #include "interpolatePEs.hh"
 #include "TFile.h"
 #include "TTree.h"
@@ -65,6 +77,9 @@ int symMust(0),symPEs(0);
 double asymPEs(0);
 const int nModels = 308;
 const int rangeTst=0;
+double inner_edge = 325.0 , outer_edge = 346.0 ;
+Bool_t fiducial = kFALSE;
+Bool_t transverse = kFALSE;
 int nModelsEff(nModels-301);//default is only [0,6]
 vector<vector<vector<double>>> asymLimits;
 int withShower(0);
@@ -115,7 +130,9 @@ int main(int argc, char** argv)
          << " --symmetrizePEs (optional: this will symmetrize the PEs from lookup tabl==for each hit in x,angX we get Lpe1,Rpe1 it will also process -x,-angX to get Lpe2,Rpe2. lep=(Lpe1+Rpe2)/2 and similarly for rpe)" << endl
          << " --asymPEs <val> (optional: this add an asymmetry on the PEs as a linear function of angle such that A = val*angX/90)" << endl
          << " --processShower (optional: if you have a hitmap with secondary hits this will scale the asymmetry appropriately)" << endl
-         << " --suffix <name to append to outFile> (omit for default)" << endl;
+         << " --suffix <name to append to outFile> (omit for default)" << endl
+	 << " --fiducial inneredge outeredge (optional; will make fiducial cuts on tracks used in the analysis)" << endl;
+    
     return 1;
   }
 
@@ -185,14 +202,23 @@ int main(int argc, char** argv)
       peUncert = 1;
     }else if(0 == strcmp("--suffix", argv[i])) {
       suffix = argv[i+1];
+    }else if(0 == strcmp("--transverse", argv[i])) {
+      transverse = kTRUE;
+    }else if(0 == strcmp("--fiducial", argv[i])) {
+      fiducial = kTRUE;
+      inner_edge  = atof(argv[i+1]);
+      outer_edge = atof(argv[i+2]);
     }
-
   }
 
   //set Limits
   //model,R/L,Upper/Lower
-  std::vector<double> dummyL={-0.500, 0.500};
-  std::vector<double> dummyR={-0.500, 0.500};
+  //   std::vector<double> dummyL={-0.500, 0.500};
+  //   std::vector<double> dummyR={-0.500, 0.500};
+  // DSA: changed the above to the below: make sure we don't truncate tails 
+  //      of asymmetry distributions.
+   std::vector<double> dummyL={-3.000, 3.000};
+   std::vector<double> dummyR={-3.000, 3.000};
   std::vector<std::vector<double>> dummyLimit={dummyR,dummyL};
   for(int i=0;i<nModelsEff;i++)
     asymLimits.push_back(dummyLimit);
@@ -364,17 +390,27 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
   cout << "bar model:  " << barModel << endl
        << "distribution model:  " << distModel << endl
        << "using rootfile:  " << rootfile << endl
-       << "using offset:  " << offset << endl;
+       << "using offset:  " << offset << endl
+       << "make fiducial cuts (across the bar direction) between "<<inner_edge<<" and "<<outer_edge << endl;
+  if (transverse){
+      cout<<"fully transverse initial spin (spin points along the bar)"<<endl;
+  }
   if(peUncert)
     cout<< "sampling PE values from Gaussian"<<endl;
   else
     cout<< "central PE values"<<endl;
 
+  // DSA: uncomment the next two lines for debugging, as well 
+  //      as later lines that output to ffout.
+        std::ofstream ffout;
+        ffout.open("averageModelDiagnostics.txt");
+
+
   TFile *fin=TFile::Open(rootfile.c_str(),"READ");
   TTree *t=(TTree*)fin->Get("t");
   int evNr;
   int primary;//0 secondary, 1 primary
-  float x,y,z,E;
+  float x,y,z,E,xi,yi;
   float angX,angY;
   float angXi,angYi;
   float polT;
@@ -384,6 +420,8 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
   t->SetBranchAddress("x",&x);
   t->SetBranchAddress("y",&y);
   t->SetBranchAddress("z",&z);
+  t->SetBranchAddress("xi",&xi);
+  t->SetBranchAddress("yi",&yi);
   t->SetBranchAddress("E",&E);
   t->SetBranchAddress("angX",&angX);
   t->SetBranchAddress("angY",&angY);
@@ -409,9 +447,35 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
   TH1D *hangPE[2][nModels];
   TH1D *as[2][nModels];
 
-  // Histogram for electron population (x)
+  // Histogram for electron population (x)  
   TH1D *x_pos = new TH1D("x_pos","electron population; position at quartz [cm]",200,-100,100);
+  TH1D *x_pos_i = new TH1D("x_pos_i","electron population; position at Pb [cm]",200,-100,100);
   TH1D *x_ang = new TH1D("x_ang","electron population; angle at quartz [deg]",240,-120,120);
+  TH1D *y_pos = new TH1D("y_pos","electron population; position at quartz [cm]",300,320,350);
+  TH1D *y_pos_i = new TH1D("y_pos_i","electron population; position at Pb [cm]",300,320,350);
+  TH1D *y_ang = new TH1D("y_ang","electron population; angle at quartz [deg]",240,-120,120);
+  TH1D *primary_E = new TH1D("primary_E","energy of primary after Pb",100,0,100);
+  TH1D *primary_E_full = new TH1D("primary_E_full","energy of primary after Pb",240,0,1200);
+  TH2D *md_pos = new TH2D("md_pos","electron population",60,-120,120,30,320,350);
+  TH2D *md_pos_i = new TH2D("md_pos_i","electron population at Pb",60,-120,120,120,320,350);
+  TH1D *ang_rel = new TH1D("ang_rel","delta_theta_x [deg]",240,-120,120);
+  TH2D *ang_rel_x = new TH2D("ang_rel_x","delta_theta_x vs x",120,320,350,60,-120,120);
+  TH2D *ang_rel_E = new TH2D("ang_rel_E","delta_theta_x vs E",100,0,100,60,-120,120);
+  TH2D *ang_rel_xi = new TH2D("ang_rel_xi","delta_theta_x vs xi",120,320,350,60,-120,120);
+  TH1D *ang_rel_xi_1 = new TH1D("ang_rel_xi_1","delta_theta_x, xi <327 ",60,-120,120);
+  TH1D *ang_rel_xi_2 = new TH1D("ang_rel_xi_2","delta_theta_x, xi 327-328 ",60,-120,120);
+  TH1D *ang_rel_xi_3 = new TH1D("ang_rel_xi_3","delta_theta_x, xi 328-329 ",60,-120,120);
+  TH1D *ang_rel_xi_4 = new TH1D("ang_rel_xi_4","delta_theta_x, xi 329-330 ",60,-120,120);
+  TH1D *ang_rel_xi_5 = new TH1D("ang_rel_xi_5","delta_theta_x, xi 330-332 ",60,-120,120);
+  TH1D *ang_rel_xi_6 = new TH1D("ang_rel_xi_6","delta_theta_x, xi 332-334 ",60,-120,120);
+  TH1D *ang_rel_xi_7 = new TH1D("ang_rel_xi_7","delta_theta_x, xi 334-336 ",60,-120,120);
+  TH1D *ang_rel_xi_8 = new TH1D("ang_rel_xi_8","delta_theta_x, xi 336-338 ",60,-120,120);
+  TH1D *ang_rel_xi_9 = new TH1D("ang_rel_xi_9","delta_theta_x, xi 338-342 ",60,-120,120);
+  TH1D *ang_rel_xi_10 = new TH1D("ang_rel_xi_10","delta_theta_x, xi 342-345 ",60,-120,120);
+  TH2D *ang_out_x = new TH2D("ang_out_x","x angle at quartz vs x",120,320,350,60,-120,120);
+  TH2D *ang_out_xi = new TH2D("ang_out_xi","x angle at quartz vs xi",120,320,350,60,-120,120);
+  TH2D *ang_in_x = new TH2D("ang_in_x","x angle at Pb vs x",120,320,350,40,0,40);
+  TH2D *ang_in_xi = new TH2D("ang_in_xi","x angle at Pb vs xi",120,320,350,40,0,40);
 
   for(int i=0;i<nModelsEff;i++)
     for(int j=0;j<2;j++){
@@ -435,11 +499,20 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
   std::vector<double> lAvgTotPE(nModels,0);
   std::vector<double> rAvgTotPE(nModels,0);
 
-  double stepSize=0.2;
+  //  double stepSize=0.2;
+  // DSA: changed above to the below
+  double stepSize=5.0;
   double currentStep=stepSize;
 
+  int igood=0;
+  int ihist=0;
+  int ientry =100;
   int nev=t->GetEntries();
+  cout << "Entries = " << nev << endl;
+  //  ffout << "Entries = " << nev << endl;
+
   float currentProc=0,procStep=10;
+  
   for(int i=0;i<nev;i++){
     t->GetEntry(i);
 
@@ -447,9 +520,20 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
       cout<<" at event: "<<i<<"\t"<<float(i+1)/nev*100<<"% | time passed: "<< (double) ((clock() - tStart)/CLOCKS_PER_SEC)<<" s"<<endl;
       currentProc+=procStep;
     }
-
-    if(float(i+1)/nev*100>currentStep){
+    //    if(float(i+1)/nev*100>currentStep){
+    // DSA ensure that each histogram is based on "ientry" events : default = 100
+    if( int(igood/ientry) > ihist){
+      //      ffout << "igood, ihist = " << igood << "  " << ihist << endl;
+      ihist++;
       for(int imod=1;imod<nModelsEff;imod++){
+	//DSA diagnostic output
+
+	/*
+	if (imod==6){
+	  ffout << endl << "entry = " << i << "  sumPEl = " << avgStepL[0] << " sumPEr = " << avgStepR[0] << " avgStepL = " << avgStepL[6] << " avgStepr = " << avgStepR[6] << endl;
+	}
+	*/
+
         if(avgStepR[0]>0 && avgStepL[0]>0){
           as[0][imod]->Fill( avgStepR[imod]/avgStepR[0]*1e6 );
           as[1][imod]->Fill( avgStepL[imod]/avgStepL[0]*1e6 );
@@ -484,6 +568,9 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
     float angYt = -1.0*angX;
     float angYti = -1.0*angXi;
     float angYt_rel = angYt - angYti;
+    //DSA:  also calculate relative angle in the "across the bar" direction (y or Xt); don't need    
+    // sign flip here between two coordinate systems.
+    float angXt_rel = angY - angYi;
 
     // SIGN FIX: In Jie's light model, she compares left(x_sim) with POS(y_track). Her table should be interpreted as R->NEG, L->POS.
     // (If you input a negative coordinate, Jie's table gives large rpe, which matches reality NEG.)
@@ -497,6 +584,14 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
       if(!interpolator.getPEs(E,yt+offset,angYt,rpeV[0],lpeV[0]))
         continue;
 
+    // DSA diagnostic
+    ffout << " entry = " << i << " x  = " << y << "  RPE = " << rpeV[0] << "  LPE = " << lpeV[0]  << endl;
+
+    //    lpeV[0] = lpeV[0] * (1-0.2*(y - 326.0)/18.0);
+    //    rpeV[0] = rpeV[0] * (1-0.2*(y - 326.0)/18.0);
+
+    ffout << " modified = " << i << " x  = " << y << "  RPE = " << rpeV[0] << "  LPE = " << lpeV[0]  << endl;
+
     // A nice test is to invert Jie's optical model, so that instead of using rpe(yt) = lpe(x) = rpe_jie(x)
     // also, lpe(yt) = rpe(x) = lpe_jie(x), rpe
 
@@ -508,6 +603,14 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
         if(!interpolator.getPEs(E,-1*(yt+offset),-1*(angYt),rpeV[1],lpeV[1]))
           continue;
     }
+
+    // DSA: add fiducial cuts in radial direction 
+    // (in this code, y is across bar)
+    // default: a range of 325 to 345 cm is "wide open" (i.e. no cuts)
+
+    if (fiducial && (y<inner_edge || y>outer_edge)) continue;
+
+        igood++;
 
     /*
       radialPEs(E,radPos,radAng, rpeV[0], lpeV[0]);
@@ -536,13 +639,18 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
         lpe = scalePEs(lpe,0,yt+offset,barModel.c_str());
         rpe = scalePEs(rpe,1,yt+offset,barModel.c_str());
       }
-
       if(imust==1) {
-        angYt_rel *= -1;
-        angYt *= -1;
-        yt *= -1;
+      	      angYt_rel *= -1;
+              angYt *= -1;
+              yt *= -1;
       }
-
+      
+      // DSA The below is a simple test to turn off any transverse A-bias effect,
+      // by "symmetrizing" the scattering in the X (radial) direction. 
+      //      if(imust==1) {
+      //             angXt_rel *= -1;
+      //           }
+    
       for(int imod=0;imod<nModelsEff;imod++){
         if( imod==7 && (E<EcutLow || E>=EcutHigh)) continue;
 
@@ -551,16 +659,36 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
         if(primary==1){
           // SIGN FIX: asymmetry should be positive for positive relative angles along the y-axis.
           if( nModelsEff==9 && imod==8)
-            asym=model(angYt_rel,imod,E);
+	    asym=model(angYt_rel,imod,E);
+	    // DSA The below is needed to calculated analyzing power 
+	    // for fully-transverse initial spin case. 
+	     if(transverse){
+	       asym=model(angXt_rel,imod,E);
+	     }
           else
-            asym=model(angYt_rel,imod,-1);
+	    asym=model(angYt_rel,imod,-1);
+	     // DSA The below is needed to calculated analyzing power 
+	     // for fully-transverse initial spin case. 
+	     if (transverse){
+	       asym=model(angXt_rel,imod,-1);
+	     }
         }else if(imod!=0)
           asym=0;
 
         if(imod==0){
           x_pos->Fill(yt);
+          x_pos_i->Fill(xi);
           x_ang->Fill(angYt);
-        }
+          y_pos->Fill(y);       // DSA: across the bar coordinate
+          y_pos_i->Fill(yi);
+          y_ang->Fill(angY);    // DSA: across the bar angle 
+	  md_pos->Fill(x,y);
+	  md_pos_i->Fill(xi,yi);
+	  // DSA below are diagnostics 
+	  //	  ffout << " entry = " << i <<"  x = " << y << "  angX = " << angY << "  angX initial = " << angYi << " Relative angle = " << angXt_rel << endl;
+
+	  }
+
 	/*
 	  add method for UD vs LR FIXME
 	 */
@@ -569,19 +697,59 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
         lAvgTotPE[imod]+=asym*lpe;
         rAvgTotPE[imod]+=asym*rpe;
 
+	//DSA diagnostic output
+	/*
+	if(imod==0 ){
+	  ffout << "x = " << y << "  lpe = " << lpeV[0] << "  rpe = " << rpeV[0] << " lAvgTot = " << lAvgTotPE[0] << " rAvgTot = " << rAvgTotPE[0] << endl;
+	}
+	if(imod==6 ){
+	  ffout << "asym = " << asym << " asym*lpe  = " << asym*lpe << " asym*rpe  = " << asym*rpe << " lAvgTot = " << lAvgTotPE[imod] << " rAvgTot = " << rAvgTotPE[imod] << endl; 
+	}
+	*/
+
+	primary_E->Fill(E);
+	primary_E_full->Fill(E);
+	ang_rel->Fill(angXt_rel);
+	ang_rel_x->Fill(y,angXt_rel);
+	ang_rel_E->Fill(E,angXt_rel);
+	ang_rel_xi->Fill(yi,angXt_rel);
+	if (yi<327) ang_rel_xi_1->Fill(angXt_rel);
+	if (yi<328&&yi>327) ang_rel_xi_2->Fill(angXt_rel);
+	if (yi<329&&yi>328) ang_rel_xi_3->Fill(angXt_rel);
+	if (yi<330&&yi>329) ang_rel_xi_4->Fill(angXt_rel);
+	if (yi<332&&yi>330) ang_rel_xi_5->Fill(angXt_rel);
+	if (yi<334&&yi>332) ang_rel_xi_6->Fill(angXt_rel);
+	if (yi<336&&yi>334) ang_rel_xi_7->Fill(angXt_rel);
+	if (yi<338&&yi>336) ang_rel_xi_8->Fill(angXt_rel);
+	if (yi<342&&yi>338) ang_rel_xi_9->Fill(angXt_rel);
+	if (yi<345&&yi>342) ang_rel_xi_10->Fill(angXt_rel);
+	ang_out_x->Fill(y,angY);
+	ang_out_xi->Fill(yi,angY);
+	ang_in_x->Fill(y,angYi);
+	ang_in_xi->Fill(yi,angYi);
+
         hpe[0][imod]->Fill((1.+asym)*rpe);
         posPE[0][imod]->Fill(yt,asym*rpe);
-        angPE[0][imod]->Fill(angYt_rel,asym*rpe);
+	//        angPE[0][imod]->Fill(angYt_rel,asym*rpe);
+      // DSA The below is needed to calculates analyzing power 
+      // for fully-transverse initial spin case. Replace above by below. 
+	// DSA switch to angXt_rel
+        angPE[0][imod]->Fill(angXt_rel,asym*rpe);
         hangPE[0][imod]->Fill(angYt,asym*rpe);
 
         hpe[1][imod]->Fill((1.+asym)*lpe);
         posPE[1][imod]->Fill(yt,asym*lpe);
-        angPE[1][imod]->Fill(angYt_rel,asym*lpe);
+	//        angPE[1][imod]->Fill(angYt_rel,asym*lpe);
+      // DSA The below is needed to calculates analyzing power 
+      // for fully-transverse initial spin case. Replace above by below. 
+	// DSA switch to angXt_rel
+        angPE[1][imod]->Fill(angXt_rel,asym*lpe);
         hangPE[1][imod]->Fill(angYt,asym*lpe);
       }//models
     }//symmetric mustache
   }
 
+    cout << "used hits = " << igood << endl;  
   cout<<endl<<"total PE average: A_L A_R DD A_ave A_ave/DD"<<endl;
   // SIGN FIX: not terribly relevent, but still: always take difference as R-L (not L-R)
   for(int imod=1;imod<nModelsEff;imod++)
@@ -733,8 +901,34 @@ std::vector<pmtdd_data*> avgValue(string barModel, string distModel, string root
 
   cout<<endl<<" average asymmetry histogram results: DD dDD A_bias dA_bia A_bias/DD*100"<<endl;
   vector< pmtdd_data* > pmtdd;
+  x_pos_i->Write();
+  y_pos_i->Write();
   x_pos->Write();
   x_ang->Write();
+  y_pos->Write();
+  y_ang->Write();
+  md_pos->Write();
+  md_pos_i->Write();
+  ang_rel->Write();
+  primary_E->Write();
+  primary_E_full->Write();
+  ang_rel_x->Write();
+  ang_out_x->Write();
+  ang_rel_xi->Write();
+  ang_rel_E->Write();
+  ang_rel_xi_1->Write();
+  ang_rel_xi_2->Write();
+  ang_rel_xi_3->Write();
+  ang_rel_xi_4->Write();
+  ang_rel_xi_5->Write();
+  ang_rel_xi_6->Write();
+  ang_rel_xi_7->Write();
+  ang_rel_xi_8->Write();
+  ang_rel_xi_9->Write();
+  ang_rel_xi_10->Write();
+  ang_out_xi->Write();
+  ang_in_x->Write();
+  ang_in_xi->Write();
   for(int j=0;j<nModelsEff;j++){
     for(int i=0;i<2;i++){
       hpe[i][j]->Write();
@@ -1019,7 +1213,7 @@ void drawFunctions(){
 
 void radialPEs(double E, double radPos, double radAng, double &lpe, double &rpe){
 
-  double a=0,b=1,c=2;
+  //  double a=0,b=1,c=2;
   //double positionFactor = a*pow(radPos,2) + b*radPos + c;
   double positionFactor = 1;
 
